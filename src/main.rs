@@ -1,7 +1,6 @@
 use std::io::Result;
 use clap::Parser;
 
-mod resources;
 mod audio;
 mod app;
 mod ui;
