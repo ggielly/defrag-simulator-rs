@@ -837,6 +837,23 @@ impl App {
         let mut current_run = 0;
         let mut start_pos = None;
 
+        // Try cache first (much faster for large disks)
+        if !self.free_space_cache.dirty {
+            if let Some(start) = self.free_space_cache.find_region(size) {
+                return Some(start);
+            }
+        }
+        
+        // Rebuild cache and search again
+        self.free_space_cache.rebuild(&self.clusters);
+        if let Some(start) = self.free_space_cache.find_region(size) {
+            return Some(start);
+        }
+        
+        // Fallback: linear scan (shouldn't happen if cache is working)
+        let mut current_run = 0;
+        let mut start_pos = None;
+
         for (i, &cluster) in self.clusters.iter().enumerate() {
             if cluster == ClusterState::Unused {
                 if current_run == 0 {
@@ -853,6 +870,26 @@ impl App {
         }
 
         None
+    }
+    
+    /// Invalidate caches when clusters change
+    fn invalidate_caches(&mut self) {
+        self.free_space_cache.invalidate();
+        self.pending_cache_dirty = true;
+    }
+    
+    /// Get cached pending indices (optimization for random selection)
+    fn get_pending_indices(&mut self) -> &[usize] {
+        if self.pending_cache_dirty {
+            self.pending_indices_cache = self.clusters
+                .iter()
+                .enumerate()
+                .filter(|&(_, c)| *c == ClusterState::Pending)
+                .map(|(i, _)| i)
+                .collect();
+            self.pending_cache_dirty = false;
+        }
+        &self.pending_indices_cache
     }
 
     /// Find the next cluster of a given state after a specific position
@@ -878,6 +915,25 @@ impl App {
             return 0.0;
         }
         pending as f32 / total_data as f32
+    }
+    
+    /// Get status text for display
+    pub fn status_text(&self) -> &'static str {
+        if self.paused {
+            return "Paused";
+        }
+        match self.phase {
+            DefragPhase::Initializing => "Initializing...",
+            DefragPhase::Analyzing => "Analyzing disk...",
+            DefragPhase::Defragmenting => {
+                match self.animation_step % 3 {
+                    0 => "Reading...",
+                    1 => "Writing...",
+                    _ => "Updating FAT...",
+                }
+            },
+            DefragPhase::Finished => "Complete",
+        }
     }
 }
 
