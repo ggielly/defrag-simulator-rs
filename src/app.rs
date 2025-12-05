@@ -6,7 +6,7 @@ use std::{
 use crate::models::{ClusterState, DefragPhase, DefragStats};
 use crate::audio::AudioEngine;
 use crate::constants::{disk, audio as audio_const, animation, ui as ui_const};
-use rand::prelude::SliceRandom;
+use rand::prelude::{SliceRandom, Rng};
 
 // -- CLI Arguments ------------------------------------------------------------
 
@@ -113,6 +113,31 @@ impl DiskDriveCollection {
     }
 }
 
+// -- File Simulation --------------------------------------------------------
+
+/// Represents a logical file with multiple clusters
+/// This allows simulating files of different sizes during defragmentation
+#[derive(Debug, Clone)]
+pub struct FileFragment {
+    /// The cluster indices that belong to this file
+    pub clusters: Vec<usize>,
+    /// The size of the file in clusters
+    pub size: usize,
+    /// Whether this file is fragmented (clusters not contiguous)
+    pub is_fragmented: bool,
+}
+
+/// Represents the state of a file during defragmentation
+#[derive(Debug, Clone)]
+pub enum FileDefragPhase {
+    /// The file is being read from its fragmented location
+    Reading { progress: usize },
+    /// The file is being written to its new contiguous location
+    Writing { progress: usize },
+    /// The file has been fully defragmented
+    Completed,
+}
+
 // -- Application State --------------------------------------------------------
 
 pub struct App {
@@ -127,6 +152,8 @@ pub struct App {
     pub animation_step: u64,
     pub read_pos: Option<usize>,
     pub write_pos: Option<usize>,
+    // File defragmentation state
+    pub current_file_read_progress: Option<FileDefragPhase>,
     // Menu state
     pub menu_open: bool,
     pub selected_menu: usize,
@@ -208,6 +235,7 @@ impl App {
             animation_step: 0,
             read_pos: None,
             write_pos: None,
+            current_file_read_progress: None,
             // Menu state
             menu_open: false,
             selected_menu: 0,
@@ -365,53 +393,133 @@ impl App {
             DefragPhase::Defragmenting => {
                 let mut rng = rand::thread_rng();
 
-                // Trouver et effacer le bloc Reading actuel (le mettre en Unused)
-                if let Some(reading_idx) = self.clusters.iter().position(|&c| c == ClusterState::Reading) {
-                    self.clusters[reading_idx] = ClusterState::Unused;
-                    // Son de lecture
-                    if let Some(ref audio) = self.audio {
-                        audio.play_read();
-                    }
-                }
+                // Calculate the speed factor based on the drive's IOPS
+                // Higher IOPS means faster operations
+                let speed_factor = 1.0 / (self.current_drive.iops() as f64).max(1.0);
 
-                // Trouver et convertir le bloc Writing en Used (défragmenté)
-                if let Some(writing_idx) = self.clusters.iter().position(|&c| c == ClusterState::Writing) {
-                    self.clusters[writing_idx] = ClusterState::Used;
-                    self.stats.clusters_defragged += 1;
-                    // Son d'écriture
-                    if let Some(ref audio) = self.audio {
-                        audio.play_write();
-                    }
-                }
+                // Determine how many clusters to process based on IOPS (faster drives process more at once)
+                let clusters_per_operation = (self.current_drive.iops() as usize).max(1);
 
-                // Chercher un bloc Pending (à défragmenter) - choix ALÉATOIRE comme dans PHP
-                let pending_indices: Vec<usize> = self.clusters
-                    .iter()
-                    .enumerate()
-                    .filter(|&(_, c)| *c == ClusterState::Pending)
-                    .map(|(i, _)| i)
-                    .collect();
+                // Check if we need to select a new file to defragment
+                if self.current_file_read_progress.is_none() {
+                    // Chercher un bloc Pending (à défragmenter) - choix ALÉATOIRE comme dans PHP
+                    let pending_indices: Vec<usize> = self.clusters
+                        .iter()
+                        .enumerate()
+                        .filter(|&(_, c)| *c == ClusterState::Pending)
+                        .map(|(i, _)| i)
+                        .collect();
 
-                if let Some(&pending_idx) = pending_indices.choose(&mut rng) {
-                    // Marquer ce bloc comme Reading
-                    self.clusters[pending_idx] = ClusterState::Reading;
-                    self.read_pos = Some(pending_idx);
+                    if let Some(&pending_idx) = pending_indices.choose(&mut rng) {
+                        // Simulate file size - different files have different sizes
+                        let file_size = 1 + (rng.gen::<usize>() % 5); // Files of 1-5 clusters
 
-                    // Son de seek quand on change de position
-                    if let Some(ref audio) = self.audio {
-                        audio.play_seek();
-                    }
+                        // Mark the first cluster in the file as Reading
+                        self.clusters[pending_idx] = ClusterState::Reading;
+                        self.read_pos = Some(pending_idx);
 
-                    // Trouver le premier bloc Unused et le marquer comme Writing
-                    if let Some(unused_idx) = self.clusters.iter().position(|&c| c == ClusterState::Unused) {
-                        self.clusters[unused_idx] = ClusterState::Writing;
-                        self.write_pos = Some(unused_idx);
+                        // Son de seek quand on change de position
+                        if let Some(ref audio) = self.audio {
+                            audio.play_seek();
+                        }
+
+                        // Trouver suffisamment de blocs contigus Unused pour écrire le fichier entier
+                        if let Some(unused_start_idx) = self.find_contiguous_unused_clusters(file_size) {
+                            // Mark the appropriate number of clusters as Writing in sequence
+                            let mut write_positions = Vec::new();
+                            for i in 0..file_size.min(clusters_per_operation) {
+                                if unused_start_idx + i < self.clusters.len() {
+                                    self.clusters[unused_start_idx + i] = ClusterState::Writing;
+                                    write_positions.push(unused_start_idx + i);
+                                }
+                            }
+
+                            // Set the write position to the first cluster of the file
+                            self.write_pos = Some(unused_start_idx);
+
+                            // Initialize file defragmentation progress
+                            self.current_file_read_progress = Some(FileDefragPhase::Reading {
+                                progress: 0
+                            });
+                        }
+                    } else {
+                        // Plus de blocs Pending, défragmentation terminée
+                        self.read_pos = None;
+                        self.write_pos = None;
+                        self.phase = DefragPhase::Finished;
                     }
                 } else {
-                    // Plus de blocs Pending, défragmentation terminée
-                    self.read_pos = None;
-                    self.write_pos = None;
-                    self.phase = DefragPhase::Finished;
+                    // Continue the defragmentation of the current file
+                    match &mut self.current_file_read_progress {
+                        Some(FileDefragPhase::Reading { progress }) => {
+                            // Process the current cluster being read
+                            if let Some(reading_idx) = self.read_pos {
+                                if self.clusters[reading_idx] == ClusterState::Reading {
+                                    self.clusters[reading_idx] = ClusterState::Unused;
+                                    // Son de lecture
+                                    if let Some(ref audio) = self.audio {
+                                        audio.play_read();
+                                    }
+
+                                    // Mark more clusters as used if we're processing a large file
+                                    for i in 1..clusters_per_operation {
+                                        if let Some(next_reading_idx) = self.find_next_cluster_in_file(reading_idx, ClusterState::Reading) {
+                                            self.clusters[next_reading_idx] = ClusterState::Unused;
+                                            if let Some(ref audio) = self.audio {
+                                                audio.play_read();
+                                            }
+                                        }
+                                    }
+
+                                    *progress += clusters_per_operation;
+                                    self.current_file_read_progress = Some(FileDefragPhase::Writing {
+                                        progress: *progress
+                                    });
+                                }
+                            }
+                        }
+                        Some(FileDefragPhase::Writing { progress }) => {
+                            // Process the current cluster being written
+                            if let Some(write_idx) = self.write_pos {
+                                if self.clusters[write_idx] == ClusterState::Writing {
+                                    self.clusters[write_idx] = ClusterState::Used;
+                                    self.stats.clusters_defragged += 1;
+                                    // Son d'écriture
+                                    if let Some(ref audio) = self.audio {
+                                        audio.play_write();
+                                    }
+
+                                    // Mark more clusters as used if we're processing a large file
+                                    for i in 1..clusters_per_operation {
+                                        if write_idx + i < self.clusters.len() &&
+                                           self.clusters[write_idx + i] == ClusterState::Writing {
+                                            self.clusters[write_idx + i] = ClusterState::Used;
+                                            self.stats.clusters_defragged += 1;
+                                            if let Some(ref audio) = self.audio {
+                                                audio.play_write();
+                                            }
+                                        }
+                                    }
+
+                                    *progress += clusters_per_operation;
+
+                                    // Check if this file is completely written
+                                    if *progress >= 5 { // Assuming average file size of 5 clusters
+                                        self.current_file_read_progress = Some(FileDefragPhase::Completed);
+                                    } else {
+                                        self.current_file_read_progress = Some(FileDefragPhase::Reading {
+                                            progress: *progress
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        Some(FileDefragPhase::Completed) => {
+                            // Reset for the next file
+                            self.current_file_read_progress = None;
+                        }
+                        None => {} // Shouldn't happen in this branch
+                    }
                 }
             }
             DefragPhase::Finished => {
@@ -449,6 +557,45 @@ impl App {
             }
             _ => {}
         }
+    }
+}
+
+impl App {
+    /// Find a sequence of contiguous unused clusters for a file of a given size
+    fn find_contiguous_unused_clusters(&self, size: usize) -> Option<usize> {
+        if size == 0 {
+            return None;
+        }
+
+        let mut current_run = 0;
+        let mut start_pos = None;
+
+        for (i, &cluster) in self.clusters.iter().enumerate() {
+            if cluster == ClusterState::Unused {
+                if current_run == 0 {
+                    start_pos = Some(i);
+                }
+                current_run += 1;
+
+                if current_run >= size {
+                    return start_pos;
+                }
+            } else {
+                current_run = 0;
+            }
+        }
+
+        None
+    }
+
+    /// Find the next cluster of a given state after a specific position
+    fn find_next_cluster_in_file(&self, start_pos: usize, state: ClusterState) -> Option<usize> {
+        for i in (start_pos + 1)..self.clusters.len() {
+            if self.clusters[i] == state {
+                return Some(i);
+            }
+        }
+        None
     }
 }
 
