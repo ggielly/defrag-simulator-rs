@@ -577,14 +577,32 @@ impl App {
                                     self.menu_open = false;
                                 }
                             }
+                            // NEW: Pause with Space or P
+                            KeyCode::Char('p') | KeyCode::Char('P') | KeyCode::Char(' ') => {
+                                if !self.menu_open {
+                                    self.toggle_pause();
+                                }
+                            }
+                            // NEW: Restart with R
+                            KeyCode::Char('r') | KeyCode::Char('R') => {
+                                if !self.menu_open {
+                                    self.restart();
+                                }
+                            }
+                            // NEW: Demo mode with D
+                            KeyCode::Char('d') | KeyCode::Char('D') => {
+                                if !self.menu_open {
+                                    self.toggle_demo_mode();
+                                }
+                            }
                             _ => {}
                         }
                     }
                 }
             }
 
-            // Update app state on each tick
-            if last_tick.elapsed() >= self.tick_rate {
+            // Update app state on each tick (only if not paused)
+            if last_tick.elapsed() >= self.tick_rate && !self.paused {
                 self.update();
                 last_tick = Instant::now();
             }
@@ -772,8 +790,11 @@ impl App {
                 }
             }
             DefragPhase::Finished => {
-                // Wait for a bit then quit
-                if self.animation_step > 50 { // 5 seconds
+                // In demo mode, restart automatically after 3 seconds
+                if self.demo_mode && self.animation_step > animation::FINISH_WAIT_TICKS / 2 {
+                    self.restart();
+                } else if !self.demo_mode && self.animation_step > animation::FINISH_WAIT_TICKS {
+                    // Normal mode: quit after waiting
                     self.running = false;
                 }
             }
@@ -784,10 +805,7 @@ impl App {
         match (self.selected_menu, self.selected_item) {
             (0, 0) => {
                 // Begin optimization - restart defrag
-                if self.phase == DefragPhase::Finished {
-                    self.phase = DefragPhase::Defragmenting;
-                    self.animation_step = 0;
-                }
+                self.restart();
             }
             (0, 4) => {
                 // Exit
