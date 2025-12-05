@@ -5,6 +5,7 @@ use std::{
 };
 use crate::models::{ClusterState, DefragPhase, DefragStats};
 use crate::audio::AudioEngine;
+use crate::constants::{disk, audio as audio_const, animation, ui as ui_const};
 use rand::prelude::SliceRandom;
 
 // -- CLI Arguments ------------------------------------------------------------
@@ -27,6 +28,10 @@ pub struct Args {
     /// Enable HDD sounds
     #[arg(long, short = 's', default_value_t = false)]
     pub sound: bool,
+    
+    /// Select disk drive (C, D, E, or F)
+    #[arg(long, short = 'd', default_value = "C")]
+    pub drive: char,
 }
 
 // -- Disk Drive Types ----------------------------------------------------------
@@ -35,23 +40,39 @@ pub struct Args {
 /// Based on real historical performance characteristics of different disk types
 #[derive(Debug, Clone)]
 pub struct DiskDrive {
-    pub letter: char,
-    pub capacity_mb: u32,
-    pub cluster_count: u32,
-    pub iops: u32,  // IOPS (Input/Output Operations Per Second) - affects audio playback speed
+    pub config: disk::DriveConfig,
     pub name: String,
 }
 
 impl DiskDrive {
-    /// Creates a new disk drive instance
-    fn new(letter: char, capacity_mb: u32, cluster_count: u32, iops: u32, name: &str) -> Self {
+    /// Creates a new disk drive instance from a DriveConfig
+    pub fn from_config(config: disk::DriveConfig) -> Self {
+        let name = match config.letter {
+            'C' => "Hard Disk (2GB, 2 IOPS)",
+            'D' => "Hard Disk (1GB, 3 IOPS)",
+            'E' => "Floppy Disk (512MB, 1 IOPS)",
+            'F' => "SSHD (2GB, 8 IOPS)",
+            _ => "Unknown Drive",
+        };
         Self {
-            letter,
-            capacity_mb,
-            cluster_count,
-            iops,
+            config,
             name: name.to_string(),
         }
+    }
+    
+    /// Gets the IOPS value for this drive
+    pub fn iops(&self) -> u32 {
+        self.config.iops
+    }
+    
+    /// Gets the drive letter
+    pub fn letter(&self) -> char {
+        self.config.letter
+    }
+    
+    /// Gets the calculated playback rate for audio based on IOPS
+    pub fn audio_playback_rate(&self) -> f32 {
+        audio_const::calculate_playback_rate(self.config.iops)
     }
 }
 
@@ -61,16 +82,13 @@ pub struct DiskDriveCollection {
 }
 
 impl DiskDriveCollection {
-    /// Creates the default collection of disk drives
+    /// Creates the default collection of disk drives from constants
     pub fn new() -> Self {
         Self {
-            drives: vec![
-                // Based on the JavaScript implementation values
-                DiskDrive::new('C', 2048, 4096, 2, "Hard Disk (2GB, 2 IOPS)"),
-                DiskDrive::new('D', 1024, 2048, 3, "Hard Disk (1GB, 3 IOPS)"),
-                DiskDrive::new('E', 512, 1024, 1, "Floppy Disk (512MB, 1 IOPS)"),
-                DiskDrive::new('F', 2048, 4096, 8, "SSHD (2GB, 8 IOPS)"), // Faster modern hybrid drive
-            ],
+            drives: disk::ALL_DRIVES
+                .iter()
+                .map(|&config| DiskDrive::from_config(config))
+                .collect(),
         }
     }
 
@@ -81,7 +99,7 @@ impl DiskDriveCollection {
 
     /// Gets a disk drive by its letter
     pub fn get_by_letter(&self, letter: char) -> Option<&DiskDrive> {
-        self.drives.iter().find(|drive| drive.letter == letter)
+        self.drives.iter().find(|drive| drive.letter() == letter)
     }
 
     /// Gets drive by index
@@ -89,9 +107,9 @@ impl DiskDriveCollection {
         self.drives.get(index)
     }
 
-    /// Gets the default drive (first one)
+    /// Gets the default drive (Drive C)
     pub fn get_default(&self) -> &DiskDrive {
-        &self.drives[0]  // Default to drive C
+        &self.drives[0]
     }
 }
 
@@ -123,13 +141,13 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(width: usize, height: usize, fill_percent: f32, enable_sound: bool) -> Self {
+    pub fn new(width: usize, height: usize, fill_percent: f32, enable_sound: bool, drive_letter: char) -> Self {
         let total_clusters = width * height;
         let mut rng = rand::thread_rng();
 
         // Calculer le nombre de clusters à défragmenter (comme dans PHP)
         let num_pending = (total_clusters as f32 * fill_percent) as usize;
-        let num_bad = (total_clusters as f32 * 0.02) as usize;
+        let num_bad = (total_clusters as f32 * ui_const::BAD_BLOCK_PERCENT) as usize;
 
         // Créer le disque avec des secteurs Pending (à défragmenter)
         let mut clusters: Vec<ClusterState> = Vec::with_capacity(total_clusters);
@@ -168,13 +186,16 @@ impl App {
 
         let total_to_defrag = clusters.iter().filter(|&&c| c == ClusterState::Pending).count() + 2; // +2 pour Reading/Writing initiaux
 
-        // Initialize the drive collection
+        // Initialize the drive collection and select the requested drive
         let drive_collection = DiskDriveCollection::new();
-        let current_drive = drive_collection.get_default().clone();
+        let current_drive = drive_collection
+            .get_by_letter(drive_letter.to_ascii_uppercase())
+            .unwrap_or_else(|| drive_collection.get_default())
+            .clone();
 
         Self {
             running: true,
-            tick_rate: Duration::from_millis(80), // Légèrement plus rapide
+            tick_rate: Duration::from_millis(animation::DEFAULT_TICK_RATE_MS),
             width,
             height,
             clusters,
@@ -193,11 +214,11 @@ impl App {
             selected_item: 0,
             // Dialog state
             show_about_box: false,
-            // Audio engine
+            // Audio engine with IOPS-based playback rate
             audio: if enable_sound {
                 let mut audio = AudioEngine::new();
                 if let Some(ref mut audio_engine) = audio {
-                    audio_engine.set_iops(current_drive.iops);
+                    audio_engine.set_iops(current_drive.iops());
                 }
                 audio
             } else {

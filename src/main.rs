@@ -5,6 +5,7 @@ mod audio;
 mod app;
 mod ui;
 mod models;
+pub mod constants;
 
 // -- Main Application Logic ---------------------------------------------------
 
@@ -23,7 +24,7 @@ fn main() -> Result<()> {
     .expect("Error setting Ctrl-C handler");
 
     // Create and run app
-    let mut app = app::App::new(width, height, args.fill, args.sound);
+    let mut app = app::App::new(width, height, args.fill, args.sound, args.drive);
     app.run(&mut tui, rx)?;
 
     // Restore terminal

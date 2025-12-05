@@ -2,6 +2,7 @@ use rodio::{Decoder, OutputStream, Sink, Source};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use crate::constants::audio::{calculate_playback_rate, DEFAULT_VOLUME, MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE};
 
 /// Audio engine that plays actual audio files instead of generating procedural sounds
 pub struct AudioEngine {
@@ -19,7 +20,7 @@ impl AudioEngine {
             Ok((stream, stream_handle)) => {
                 match Sink::try_new(&stream_handle) {
                     Ok(sink) => {
-                        sink.set_volume(0.5);
+                        sink.set_volume(DEFAULT_VOLUME);
                         Some(Self {
                             _stream: stream,
                             sink,
@@ -35,12 +36,15 @@ impl AudioEngine {
     }
 
     /// Updates the playback rate based on the disk IOPS (Input/Output Operations Per Second)
+    /// Uses the JavaScript formula: maps IOPS [0, 16] to rate [0.5, 4.0]
     /// Higher IOPS means faster audio playback, simulating faster disk performance
     pub fn set_iops(&mut self, iops: u32) {
-        // Calculate playback rate based on IOPS following the JavaScript formula: 1000 / iops
-        // Using a minimum of 0.1 and maximum of 4.0 to avoid extreme values
-        let rate = (1000.0 / (iops as f32)).max(0.1).min(4.0);
-        self.playback_rate = rate;
+        self.playback_rate = calculate_playback_rate(iops);
+    }
+    
+    /// Gets the current playback rate
+    pub fn get_playback_rate(&self) -> f32 {
+        self.playback_rate
     }
 
     /// Plays a sound file from the static/audio directory with the current playback rate
