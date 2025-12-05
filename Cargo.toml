@@ -1,7 +1,7 @@
 [package]
 name = "defrag-rs"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 crossterm = "0.27"
@@ -9,3 +9,4 @@ rand = "0.8"
 clap = { version = "4.0", features = ["derive"] }
 ratatui = { version = "0.29.0", features = ["crossterm"] }
 ctrlc = "3.5.1"
+rodio = { version = "0.19", default-features = false, features = ["wav"] }

@@ -6,6 +6,7 @@ use crossterm::{
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, BorderType, Paragraph, Widget},
+    layout::Alignment,
 };
 use rand::prelude::SliceRandom;
 use std::{
@@ -14,6 +15,199 @@ use std::{
     time::{Duration, Instant},
 };
 use clap::Parser;
+use rodio::{OutputStream, Source, Sink};
+
+// -- Audio Engine -------------------------------------------------------------
+
+/// Générateur de son HDD procédural
+struct HddSoundGenerator {
+    sample_rate: u32,
+    phase: f32,
+    sound_type: HddSoundType,
+    click_countdown: u32,
+    rng_state: u64,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+#[allow(dead_code)]
+enum HddSoundType {
+    Seek,      // Bruit de déplacement de tête (clics rapides)
+    Read,      // Grattement de lecture
+    Write,     // Grattement d'écriture (légèrement différent)
+    Idle,      // Ronronnement de fond
+}
+
+impl HddSoundGenerator {
+    fn new(sound_type: HddSoundType) -> Self {
+        Self {
+            sample_rate: 44100,
+            phase: 0.0,
+            sound_type,
+            click_countdown: 0,
+            rng_state: 12345,
+        }
+    }
+    
+    // Générateur de bruit pseudo-aléatoire simple (xorshift)
+    fn noise(&mut self) -> f32 {
+        self.rng_state ^= self.rng_state << 13;
+        self.rng_state ^= self.rng_state >> 7;
+        self.rng_state ^= self.rng_state << 17;
+        (self.rng_state as f32 / u64::MAX as f32) * 2.0 - 1.0
+    }
+    
+    fn generate_sample(&mut self) -> f32 {
+        match self.sound_type {
+            HddSoundType::Seek => self.generate_seek_sound(),
+            HddSoundType::Read => self.generate_read_sound(),
+            HddSoundType::Write => self.generate_write_sound(),
+            HddSoundType::Idle => self.generate_idle_sound(),
+        }
+    }
+    
+    fn generate_seek_sound(&mut self) -> f32 {
+        // Son de seek: clics mécaniques rapides
+        self.phase += 1.0;
+        
+        if self.click_countdown == 0 {
+            // Nouveau clic toutes les 50-150 samples
+            self.click_countdown = 50 + (self.noise().abs() * 100.0) as u32;
+            return 0.8 * (if self.noise() > 0.0 { 1.0 } else { -1.0 });
+        }
+        
+        self.click_countdown = self.click_countdown.saturating_sub(1);
+        
+        // Bruit de fond mécanique
+        let mechanical = (self.phase * 0.01).sin() * 0.1;
+        let noise = self.noise() * 0.05;
+        
+        (mechanical + noise) * 0.5
+    }
+    
+    fn generate_read_sound(&mut self) -> f32 {
+        // Son de lecture: grattement régulier + bruit haute fréquence
+        self.phase += 1.0;
+        
+        // Ton de base (moteur)
+        let motor = (self.phase * 0.002 * std::f32::consts::TAU).sin() * 0.15;
+        
+        // Grattement (bruit filtré)
+        let scratch = self.noise() * 0.2;
+        
+        // Modulation pour effet de "tête qui lit"
+        let modulation = ((self.phase * 0.0001).sin() + 1.0) * 0.5;
+        
+        (motor + scratch * modulation) * 0.4
+    }
+    
+    fn generate_write_sound(&mut self) -> f32 {
+        // Son d'écriture: similaire à lecture mais plus "intense"
+        self.phase += 1.0;
+        
+        let motor = (self.phase * 0.0025 * std::f32::consts::TAU).sin() * 0.2;
+        let scratch = self.noise() * 0.25;
+        let click = if (self.phase as u32) % 200 < 10 { 0.3 } else { 0.0 };
+        
+        (motor + scratch + click) * 0.4
+    }
+    
+    fn generate_idle_sound(&mut self) -> f32 {
+        // Son de repos: ronronnement léger du moteur
+        self.phase += 1.0;
+        
+        let motor = (self.phase * 0.001 * std::f32::consts::TAU).sin() * 0.05;
+        let noise = self.noise() * 0.02;
+        
+        (motor + noise) * 0.2
+    }
+}
+
+impl Iterator for HddSoundGenerator {
+    type Item = f32;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(self.generate_sample())
+    }
+}
+
+impl Source for HddSoundGenerator {
+    fn current_frame_len(&self) -> Option<usize> {
+        None
+    }
+    
+    fn channels(&self) -> u16 {
+        1 // Mono
+    }
+    
+    fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+    
+    fn total_duration(&self) -> Option<Duration> {
+        None // Infini
+    }
+}
+
+/// Gestionnaire audio pour le simulateur
+struct AudioEngine {
+    _stream: OutputStream,
+    sink: Sink,
+    enabled: bool,
+}
+
+impl AudioEngine {
+    fn new() -> Option<Self> {
+        match OutputStream::try_default() {
+            Ok((stream, stream_handle)) => {
+                match Sink::try_new(&stream_handle) {
+                    Ok(sink) => {
+                        sink.set_volume(0.5);
+                        Some(Self {
+                            _stream: stream,
+                            sink,
+                            enabled: true,
+                        })
+                    }
+                    Err(_) => None,
+                }
+            }
+            Err(_) => None,
+        }
+    }
+    
+    fn play_sound(&self, sound_type: HddSoundType, duration_ms: u64) {
+        if !self.enabled {
+            return;
+        }
+        
+        let generator = HddSoundGenerator::new(sound_type);
+        let source = generator.take_duration(Duration::from_millis(duration_ms));
+        self.sink.append(source);
+    }
+    
+    fn play_seek(&self) {
+        self.play_sound(HddSoundType::Seek, 50);
+    }
+    
+    fn play_read(&self) {
+        self.play_sound(HddSoundType::Read, 80);
+    }
+    
+    fn play_write(&self) {
+        self.play_sound(HddSoundType::Write, 80);
+    }
+    
+    fn toggle(&mut self) {
+        self.enabled = !self.enabled;
+        if !self.enabled {
+            self.sink.stop();
+        }
+    }
+    
+    fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+}
 
 // -- CLI Arguments ------------------------------------------------------------
 
@@ -31,6 +225,10 @@ struct Args {
     /// Initial disk fill percentage
     #[arg(long, default_value_t = 0.65)]
     fill: f32,
+    
+    /// Enable HDD sounds
+    #[arg(long, short = 's', default_value_t = false)]
+    sound: bool,
 }
 
 // -- Application State --------------------------------------------------------
@@ -70,6 +268,10 @@ struct App {
     menu_open: bool,
     selected_menu: usize,
     selected_item: usize,
+    // Dialog state
+    show_about_box: bool,
+    // Audio
+    audio: Option<AudioEngine>,
 }
 
 struct DefragStats {
@@ -98,7 +300,7 @@ fn main() -> Result<()> {
     .expect("Error setting Ctrl-C handler");
 
     // Create and run app
-    let mut app = App::new(width, height, args.fill);
+    let mut app = App::new(width, height, args.fill, args.sound);
     app.run(&mut terminal, rx)?;
 
     // Restore terminal
@@ -108,7 +310,7 @@ fn main() -> Result<()> {
 }
 
 impl App {
-    fn new(width: usize, height: usize, fill_percent: f32) -> Self {
+    fn new(width: usize, height: usize, fill_percent: f32, enable_sound: bool) -> Self {
         let total_clusters = width * height;
         let mut rng = rand::thread_rng();
         
@@ -172,6 +374,10 @@ impl App {
             menu_open: false,
             selected_menu: 0,
             selected_item: 0,
+            // Dialog state
+            show_about_box: false,
+            // Audio engine
+            audio: if enable_sound { AudioEngine::new() } else { None },
         }
     }
 
@@ -189,12 +395,36 @@ impl App {
             if event::poll(Duration::from_millis(10))? {
                 if let Event::Key(key) = event::read()? {
                     if key.kind == KeyEventKind::Press {
+                        // Si About Box est ouverte, seules certaines touches la ferment
+                        if self.show_about_box {
+                            match key.code {
+                                KeyCode::Enter | KeyCode::Esc | KeyCode::Char(' ') => {
+                                    self.show_about_box = false;
+                                }
+                                _ => {}
+                            }
+                            continue;
+                        }
+                        
                         match key.code {
                             KeyCode::Char('q') | KeyCode::Esc => {
                                 if self.menu_open {
                                     self.menu_open = false;
                                 } else {
                                     self.running = false;
+                                }
+                            }
+                            KeyCode::F(1) => {
+                                // F1 = Help -> Afficher About
+                                self.show_about_box = true;
+                            }
+                            KeyCode::Char('s') | KeyCode::Char('S') => {
+                                // Toggle sound
+                                if let Some(ref mut audio) = self.audio {
+                                    audio.toggle();
+                                } else {
+                                    // Activer le son si pas encore initialisé
+                                    self.audio = AudioEngine::new();
                                 }
                             }
                             KeyCode::F(10) | KeyCode::Tab => {
@@ -265,6 +495,13 @@ impl App {
                 let total_clusters = self.width * self.height;
                 let scan_pos = (self.animation_step as usize * 5).min(total_clusters-1);
                 self.read_pos = Some(scan_pos);
+                
+                // Jouer un son de seek pendant l'analyse
+                if self.animation_step % 3 == 0 {
+                    if let Some(ref audio) = self.audio {
+                        audio.play_seek();
+                    }
+                }
 
                 if self.animation_step > (total_clusters as u64 / 5) + 10 {
                     self.read_pos = None;
@@ -279,12 +516,20 @@ impl App {
                 // Trouver et effacer le bloc Reading actuel (le mettre en Unused)
                 if let Some(reading_idx) = self.clusters.iter().position(|&c| c == ClusterState::Reading) {
                     self.clusters[reading_idx] = ClusterState::Unused;
+                    // Son de lecture
+                    if let Some(ref audio) = self.audio {
+                        audio.play_read();
+                    }
                 }
                 
                 // Trouver et convertir le bloc Writing en Used (défragmenté)
                 if let Some(writing_idx) = self.clusters.iter().position(|&c| c == ClusterState::Writing) {
                     self.clusters[writing_idx] = ClusterState::Used;
                     self.stats.clusters_defragged += 1;
+                    // Son d'écriture
+                    if let Some(ref audio) = self.audio {
+                        audio.play_write();
+                    }
                 }
                 
                 // Chercher un bloc Pending (à défragmenter) - choix ALÉATOIRE comme dans PHP
@@ -299,6 +544,11 @@ impl App {
                     // Marquer ce bloc comme Reading
                     self.clusters[pending_idx] = ClusterState::Reading;
                     self.read_pos = Some(pending_idx);
+                    
+                    // Son de seek quand on change de position
+                    if let Some(ref audio) = self.audio {
+                        audio.play_seek();
+                    }
                     
                     // Trouver le premier bloc Unused et le marquer comme Writing
                     if let Some(unused_idx) = self.clusters.iter().position(|&c| c == ClusterState::Unused) {
@@ -353,6 +603,9 @@ impl App {
 
         // Rendre le menu déroulant par-dessus tout
         self.render_menu_dropdown(frame, frame.area());
+        
+        // Rendre l'About Box par-dessus tout
+        self.render_about_box(frame);
     }
 
     fn render_header(&self, frame: &mut Frame, area: Rect) {
@@ -555,17 +808,27 @@ impl App {
             },
             DefragPhase::Finished => "Complete",
         };
+        
+        // Indicateur de son
+        let sound_indicator = match &self.audio {
+            Some(audio) if audio.is_enabled() => " [♪ ON] ",
+            Some(_) => " [♪ OFF]",
+            None => " [S=Sound]",
+        };
+        
         // Calculer le padding pour justifier à droite comme dans le PHP original
         let version_text = "| MS-DOS Defrag ";
         let total_width = area.width as usize;
         let action_len = action_text.len() + 2; // "  " prefix
+        let sound_len = sound_indicator.len();
         let version_len = version_text.len();
-        let padding = total_width.saturating_sub(action_len + version_len);
+        let padding = total_width.saturating_sub(action_len + sound_len + version_len);
         
         let action_line = Paragraph::new(format!(
-            "  {}{}{}",
+            "  {}{}{}{}",
             action_text,
             " ".repeat(padding),
+            sound_indicator,
             version_text
         )).style(Style::new().on_red().white().bold());
         frame.render_widget(action_line, footer_layout[6]);
@@ -614,8 +877,100 @@ impl App {
                     self.animation_step = 0;
                 }
             }
+            (4, 0) | (4, 1) => {
+                // Help -> Contents ou About
+                self.show_about_box = true;
+            }
             _ => {}
         }
+    }
+
+    fn render_about_box(&self, frame: &mut Frame) {
+        if !self.show_about_box {
+            return;
+        }
+
+        let area = frame.area();
+        
+        // Dimensions de la boîte About
+        let box_width = 52;
+        let box_height = 18;
+        let box_x = (area.width.saturating_sub(box_width)) / 2;
+        let box_y = (area.height.saturating_sub(box_height)) / 2;
+        
+        let about_area = Rect::new(box_x, box_y, box_width, box_height);
+        
+        // Fond de la boîte avec ombre
+        let shadow_area = Rect::new(box_x + 2, box_y + 1, box_width, box_height);
+        frame.render_widget(
+            Block::new().style(Style::new().bg(Color::Black)),
+            shadow_area
+        );
+        
+        // Boîte principale avec double bordure
+        let about_block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Double)
+            .title(" About MS-DOS Defrag ")
+            .title_alignment(Alignment::Center)
+            .style(Style::new().bg(Color::Gray).fg(Color::Black));
+        
+        frame.render_widget(about_block.clone(), about_area);
+        
+        let inner = about_block.inner(about_area);
+        
+        // Contenu ASCII art et informations
+        let about_text = vec![
+            Line::from(""),
+            Line::from(vec![
+                Span::styled(r"   ____  _____ _____ ____      _    ____", Style::new().fg(Color::Blue).bold()),
+            ]),
+            Line::from(vec![
+                Span::styled(r"  |  _ \| ____|  ___|  _ \    / \  / ___|", Style::new().fg(Color::Blue).bold()),
+            ]),
+            Line::from(vec![
+                Span::styled(r"  | | | |  _| | |_  | |_) |  / _ \| |  _", Style::new().fg(Color::Blue).bold()),
+            ]),
+            Line::from(vec![
+                Span::styled(r"  | |_| | |___|  _| |  _ <  / ___ \ |_| |", Style::new().fg(Color::Cyan).bold()),
+            ]),
+            Line::from(vec![
+                Span::styled(r"  |____/|_____|_|   |_| \_\/_/   \_\____|", Style::new().fg(Color::Cyan).bold()),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  MS-DOS Defrag Simulator v0.1.0", Style::new().fg(Color::Black).bold()),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  Author: ", Style::new().fg(Color::DarkGray)),
+                Span::styled("Guillaume 'GuY' Gielly", Style::new().fg(Color::Black).bold()),
+            ]),
+            Line::from(vec![
+                Span::styled("  License: ", Style::new().fg(Color::DarkGray)),
+                Span::styled("GPL-v3", Style::new().fg(Color::Black)),
+            ]),
+            Line::from(vec![
+                Span::styled("  GitHub: ", Style::new().fg(Color::DarkGray)),
+                Span::styled("github.com/ggielly/defrag-rs", Style::new().fg(Color::Blue).underlined()),
+            ]),
+            Line::from(""),
+        ];
+        
+        let about_paragraph = Paragraph::new(about_text)
+            .style(Style::new().bg(Color::Gray));
+        frame.render_widget(about_paragraph, inner);
+        
+        // Bouton OK centré en bas
+        let button_width = 10;
+        let button_x = inner.x + (inner.width.saturating_sub(button_width)) / 2;
+        let button_y = inner.y + inner.height - 2;
+        let button_area = Rect::new(button_x, button_y, button_width, 1);
+        
+        let ok_button = Paragraph::new("[   OK   ]")
+            .style(Style::new().fg(Color::White).bg(Color::DarkGray).bold())
+            .alignment(Alignment::Center);
+        frame.render_widget(ok_button, button_area);
     }
 }
 
