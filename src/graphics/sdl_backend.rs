@@ -239,6 +239,60 @@ impl SdlBackend {
         self.draw_vline(x + w - 2, y + 1, y + h - 2, colors::BUTTON_SHADOW);
     }
     
+    /// Draw text at the given position
+    pub fn draw_text(&mut self, text: &str, x: i32, y: i32, size: u16, color: Color) -> Result<(u32, u32), String> {
+        if text.is_empty() {
+            return Ok((0, 0));
+        }
+        
+        let font = self.ttf_context
+            .load_font_from_rwops(
+                sdl2::rwops::RWops::from_bytes(super::fonts::FONT_DATA)
+                    .map_err(|e| format!("Failed to create RWops: {}", e))?,
+                size,
+            )
+            .map_err(|e| format!("Failed to load font: {}", e))?;
+        
+        let surface = font
+            .render(text)
+            .blended(color)
+            .map_err(|e| format!("Failed to render text: {}", e))?;
+        
+        let texture = self.texture_creator
+            .create_texture_from_surface(&surface)
+            .map_err(|e| format!("Failed to create texture: {}", e))?;
+        
+        let sdl2::render::TextureQuery { width, height, .. } = texture.query();
+        
+        let target = Rect::new(x, y, width, height);
+        self.canvas.copy(&texture, None, Some(target))
+            .map_err(|e| format!("Failed to copy texture: {}", e))?;
+        
+        Ok((width, height))
+    }
+    
+    /// Draw text centered within a given width
+    pub fn draw_text_centered(&mut self, text: &str, x: i32, y: i32, width: u32, size: u16, color: Color) -> Result<(u32, u32), String> {
+        if text.is_empty() {
+            return Ok((0, 0));
+        }
+        
+        let font = self.ttf_context
+            .load_font_from_rwops(
+                sdl2::rwops::RWops::from_bytes(super::fonts::FONT_DATA)
+                    .map_err(|e| format!("Failed to create RWops: {}", e))?,
+                size,
+            )
+            .map_err(|e| format!("Failed to load font: {}", e))?;
+        
+        let (text_width, _) = font.size_of(text)
+            .map_err(|e| format!("Failed to measure text: {}", e))?;
+        
+        let centered_x = x + ((width as i32 - text_width as i32) / 2);
+        
+        self.draw_text(text, centered_x, y, size, color)
+    }
+    
     /// Check if still running
     pub fn is_running(&self) -> bool {
         self.running

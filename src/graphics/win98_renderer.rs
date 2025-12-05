@@ -5,7 +5,6 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use std::time::{Duration, Instant};
 
-use super::fonts::{FontManager, FontSize, TextRenderer};
 use super::sdl_backend::{colors, SdlBackend, SdlConfig, SdlEvent};
 use super::win98_widgets::{Button, ButtonState, ProgressBar, SunkenPanel, Win98WindowWidget};
 use crate::app::App;
@@ -397,44 +396,6 @@ impl Win98GraphicalRenderer {
             0.0
         };
         self.progress_bar.set_progress(progress);
-    }
-    
-    /// Main render function
-    fn render(&mut self, app: &App, fonts: &FontManager) {
-        // Clear with desktop color
-        self.backend.clear();
-        
-        // Draw window
-        self.window_widget.draw(&mut self.backend.canvas);
-        
-        // Draw title bar text
-        self.draw_title_text(fonts);
-        
-        // Draw disk panel
-        self.disk_panel.draw(&mut self.backend.canvas);
-        
-        // Draw disk grid
-        self.draw_disk_grid(app);
-        
-        // Draw legend
-        self.draw_legend(app, fonts);
-        
-        // Draw progress bar
-        self.progress_bar.draw(&mut self.backend.canvas);
-        
-        // Draw progress text
-        self.draw_progress_text(app, fonts);
-        
-        // Draw buttons
-        self.settings_button.draw(&mut self.backend.canvas);
-        self.start_pause_button.draw(&mut self.backend.canvas);
-        self.stop_button.draw(&mut self.backend.canvas);
-        
-        // Draw button text
-        self.draw_button_text(fonts);
-        
-        // Present
-        self.backend.present();
     }
     
     /// Draw the disk cluster grid
