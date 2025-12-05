@@ -829,46 +829,22 @@ impl App {
 
 impl App {
     /// Find a sequence of contiguous unused clusters for a file of a given size
-    fn find_contiguous_unused_clusters(&self, size: usize) -> Option<usize> {
+    fn find_contiguous_unused_clusters(&mut self, size: usize) -> Option<usize> {
         if size == 0 {
             return None;
         }
 
-        let mut current_run = 0;
-        let mut start_pos = None;
-
-        // Try cache first (much faster for large disks)
-        if !self.free_space_cache.dirty {
-            if let Some(start) = self.free_space_cache.find_region(size) {
-                return Some(start);
-            }
+        // Rebuild cache if dirty
+        if self.free_space_cache.dirty {
+            self.free_space_cache.rebuild(&self.clusters);
         }
         
-        // Rebuild cache and search again
-        self.free_space_cache.rebuild(&self.clusters);
+        // Try cache first (much faster for large disks)
         if let Some(start) = self.free_space_cache.find_region(size) {
             return Some(start);
         }
         
-        // Fallback: linear scan (shouldn't happen if cache is working)
-        let mut current_run = 0;
-        let mut start_pos = None;
-
-        for (i, &cluster) in self.clusters.iter().enumerate() {
-            if cluster == ClusterState::Unused {
-                if current_run == 0 {
-                    start_pos = Some(i);
-                }
-                current_run += 1;
-
-                if current_run >= size {
-                    return start_pos;
-                }
-            } else {
-                current_run = 0;
-            }
-        }
-
+        // No suitable region found
         None
     }
     

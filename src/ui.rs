@@ -240,16 +240,27 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     ];
     frame.render_widget(Paragraph::new(Line::from(line3_spans)).style(Style::new().on_blue()), footer_layout[2]);
 
-    // Line 4: Status (Elapsed Time) + Legend (Bad, Unmovable)
+    // Line 4: Status (Elapsed time + estimated) + Legend (Bad, Unmovable)
     let elapsed = app.stats.start_time.elapsed();
     let elapsed_str = format!(
-        "Elapsed Time: {:02}:{:02}:{:02}",
+        "{:02}:{:02}:{:02}",
         elapsed.as_secs() / 3600,
         (elapsed.as_secs() % 3600) / 60,
         elapsed.as_secs() % 60
     );
+    let remaining_str = if let Some(remaining) = app.estimated_time_remaining() {
+        format!(
+            " ETA {:02}:{:02}:{:02}",
+            remaining.as_secs() / 3600,
+            (remaining.as_secs() % 3600) / 60,
+            remaining.as_secs() % 60
+        )
+    } else {
+        String::new()
+    };
+    let time_display = format!("Time: {}{}", elapsed_str, remaining_str);
     let line4_spans = vec![
-        Span::raw(format!("│ {:^38} │", elapsed_str)),
+        Span::raw(format!("│ {:^38} │", time_display)),
         Span::raw("│ "),
         Span::styled("B", Style::new().fg(Color::Red).bg(Color::Black)),
         Span::raw(" - Bad Block    "),
@@ -268,19 +279,26 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
 
     // --- Action Line ---
     // Messages d'action aléatoires comme dans l'implémentation PHP
-    let action_text = match app.phase {
-        DefragPhase::Initializing => "Initializing...",
-        DefragPhase::Analyzing => "Analyzing disk...",
-        DefragPhase::Defragmenting => {
-            // Alterner entre les messages comme dans PHP
-            match app.animation_step % 3 {
-                0 => "Reading...",
-                1 => "Writing...",
-                _ => "Updating FAT...",
-            }
-        },
-        DefragPhase::Finished => "Complete",
+    let action_text = if app.paused {
+        "[ PAUSED ]"
+    } else {
+        match app.phase {
+            DefragPhase::Initializing => "Initializing...",
+            DefragPhase::Analyzing => "Analyzing disk...",
+            DefragPhase::Defragmenting => {
+                // Alterner entre les messages comme dans PHP
+                match app.animation_step % 3 {
+                    0 => "Reading...",
+                    1 => "Writing...",
+                    _ => "Updating FAT...",
+                }
+            },
+            DefragPhase::Finished => "Complete",
+        }
     };
+
+    // Indicateur de mode démo
+    let demo_indicator = if app.demo_mode { "[DEMO] " } else { "" };
 
     // Indicateur de son
     let sound_indicator = match &app.audio {
@@ -290,15 +308,16 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     };
 
     // Calculer le padding pour justifier à droite comme dans le PHP original
-    let version_text = "| MS-DOS Defrag ";
+    let version_text = "| MS-DOS defrag ";
     let total_width = area.width as usize;
-    let action_len = action_text.len() + 2; // "  " prefix
+    let action_len = action_text.len() + demo_indicator.len() + 2; // "  " prefix
     let sound_len = sound_indicator.len();
     let version_len = version_text.len();
     let padding = total_width.saturating_sub(action_len + sound_len + version_len);
 
     let action_line = Paragraph::new(format!(
-        "  {}{}{}{}",
+        "  {}{}{}{}{}",
+        demo_indicator,
         action_text,
         " ".repeat(padding),
         sound_indicator,
