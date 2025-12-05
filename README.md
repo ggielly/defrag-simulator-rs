@@ -3,7 +3,9 @@
 
 Grab a drink and idle behind a smoothing experience of a DOS disk defragmentation.
 
-![disk-defrag](defrag.png)
+![disk-defrag](defrag-simulator01.png)
+
+![disk-defrag](defrag-simulator02.png)
 
 ## How to run
 
