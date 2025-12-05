@@ -1,145 +1,19 @@
-use rodio::{OutputStream, Source, Sink};
-use std::time::Duration;
+use rodio::{Decoder, OutputStream, Sink, Source};
+use std::fs::File;
+use std::io::BufReader;
+use std::path::Path;
 
-// -- Audio Engine -------------------------------------------------------------
-
-/// Générateur de son HDD procédural
-pub struct HddSoundGenerator {
-    sample_rate: u32,
-    phase: f32,
-    sound_type: HddSoundType,
-    click_countdown: u32,
-    rng_state: u64,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-#[allow(dead_code)]
-pub enum HddSoundType {
-    Seek,      // Bruit de déplacement de tête (clics rapides)
-    Read,      // Grattement de lecture
-    Write,     // Grattement d'écriture (légèrement différent)
-    Idle,      // Ronronnement de fond
-}
-
-impl HddSoundGenerator {
-    pub fn new(sound_type: HddSoundType) -> Self {
-        Self {
-            sample_rate: 44100,
-            phase: 0.0,
-            sound_type,
-            click_countdown: 0,
-            rng_state: 12345,
-        }
-    }
-
-    // Générateur de bruit pseudo-aléatoire simple (xorshift)
-    fn noise(&mut self) -> f32 {
-        self.rng_state ^= self.rng_state << 13;
-        self.rng_state ^= self.rng_state >> 7;
-        self.rng_state ^= self.rng_state << 17;
-        (self.rng_state as f32 / u64::MAX as f32) * 2.0 - 1.0
-    }
-
-    fn generate_sample(&mut self) -> f32 {
-        match self.sound_type {
-            HddSoundType::Seek => self.generate_seek_sound(),
-            HddSoundType::Read => self.generate_read_sound(),
-            HddSoundType::Write => self.generate_write_sound(),
-            HddSoundType::Idle => self.generate_idle_sound(),
-        }
-    }
-
-    fn generate_seek_sound(&mut self) -> f32 {
-        // Son de seek: clics mécaniques rapides
-        self.phase += 1.0;
-
-        if self.click_countdown == 0 {
-            // Nouveau clic toutes les 50-150 samples
-            self.click_countdown = 50 + (self.noise().abs() * 100.0) as u32;
-            return 0.8 * (if self.noise() > 0.0 { 1.0 } else { -1.0 });
-        }
-
-        self.click_countdown = self.click_countdown.saturating_sub(1);
-
-        // Bruit de fond mécanique
-        let mechanical = (self.phase * 0.01).sin() * 0.1;
-        let noise = self.noise() * 0.05;
-
-        (mechanical + noise) * 0.5
-    }
-
-    fn generate_read_sound(&mut self) -> f32 {
-        // Son de lecture: grattement régulier + bruit haute fréquence
-        self.phase += 1.0;
-
-        // Ton de base (moteur)
-        let motor = (self.phase * 0.002 * std::f32::consts::TAU).sin() * 0.15;
-
-        // Grattement (bruit filtré)
-        let scratch = self.noise() * 0.2;
-
-        // Modulation pour effet de "tête qui lit"
-        let modulation = ((self.phase * 0.0001).sin() + 1.0) * 0.5;
-
-        (motor + scratch * modulation) * 0.4
-    }
-
-    fn generate_write_sound(&mut self) -> f32 {
-        // Son d'écriture: similaire à lecture mais plus "intense"
-        self.phase += 1.0;
-
-        let motor = (self.phase * 0.0025 * std::f32::consts::TAU).sin() * 0.2;
-        let scratch = self.noise() * 0.25;
-        let click = if (self.phase as u32) % 200 < 10 { 0.3 } else { 0.0 };
-
-        (motor + scratch + click) * 0.4
-    }
-
-    fn generate_idle_sound(&mut self) -> f32 {
-        // Son de repos: ronronnement léger du moteur
-        self.phase += 1.0;
-
-        let motor = (self.phase * 0.001 * std::f32::consts::TAU).sin() * 0.05;
-        let noise = self.noise() * 0.02;
-
-        (motor + noise) * 0.2
-    }
-}
-
-impl Iterator for HddSoundGenerator {
-    type Item = f32;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(self.generate_sample())
-    }
-}
-
-impl Source for HddSoundGenerator {
-    fn current_frame_len(&self) -> Option<usize> {
-        None
-    }
-
-    fn channels(&self) -> u16 {
-        1 // Mono
-    }
-
-    fn sample_rate(&self) -> u32 {
-        self.sample_rate
-    }
-
-    fn total_duration(&self) -> Option<Duration> {
-        None // Infini
-    }
-}
-
-/// Gestionnaire audio pour le simulateur
+/// Audio engine that plays actual audio files instead of generating procedural sounds
 pub struct AudioEngine {
     _stream: OutputStream,
     sink: Sink,
     enabled: bool,
+    /// Playback rate that changes based on disk IOPS (higher IOPS = faster audio)
+    playback_rate: f32,
 }
 
 impl AudioEngine {
+    /// Creates a new audio engine with default playback rate of 1.0
     pub fn new() -> Option<Self> {
         match OutputStream::try_default() {
             Ok((stream, stream_handle)) => {
@@ -150,6 +24,7 @@ impl AudioEngine {
                             _stream: stream,
                             sink,
                             enabled: true,
+                            playback_rate: 1.0, // Default playback rate
                         })
                     }
                     Err(_) => None,
@@ -159,28 +34,67 @@ impl AudioEngine {
         }
     }
 
-    pub fn play_sound(&self, sound_type: HddSoundType, duration_ms: u64) {
+    /// Updates the playback rate based on the disk IOPS (Input/Output Operations Per Second)
+    /// Higher IOPS means faster audio playback, simulating faster disk performance
+    pub fn set_iops(&mut self, iops: u32) {
+        // Calculate playback rate based on IOPS following the JavaScript formula: 1000 / iops
+        // Using a minimum of 0.1 and maximum of 4.0 to avoid extreme values
+        let rate = (1000.0 / (iops as f32)).max(0.1).min(4.0);
+        self.playback_rate = rate;
+    }
+
+    /// Plays a sound file from the static/audio directory with the current playback rate
+    fn play_sound_file<P: AsRef<Path>>(&self, sound_path: P) {
         if !self.enabled {
             return;
         }
 
-        let generator = HddSoundGenerator::new(sound_type);
-        let source = generator.take_duration(Duration::from_millis(duration_ms));
-        self.sink.append(source);
+        // Try to load the sound file from the static/audio directory
+        let full_path = Path::new("static/audio").join(sound_path);
+
+        // Attempt to load and play the audio file with the playback rate
+        if let Ok(file) = File::open(&full_path) {
+            let reader = BufReader::new(file);
+            if let Ok(source) = Decoder::new(reader) {
+                // Apply playback rate to the audio source
+                let source_with_rate = source.speed(self.playback_rate);
+                self.sink.append(source_with_rate);
+            }
+        } else {
+            // Try relative path if absolute fails
+            let relative_path = Path::new("static").join("audio").join(&full_path);
+            if let Ok(file) = File::open(&relative_path) {
+                let reader = BufReader::new(file);
+                if let Ok(source) = Decoder::new(reader) {
+                    // Apply playback rate to the audio source
+                    let source_with_rate = source.speed(self.playback_rate);
+                    self.sink.append(source_with_rate);
+                }
+            }
+        }
     }
 
-    pub fn play_seek(&self) {
-        self.play_sound(HddSoundType::Seek, 50);
+    /// Plays the HDD sound file which changes speed based on IOPS
+    pub fn play_hdd_sound(&self) {
+        self.play_sound_file("hdd.mp3");
     }
 
-    pub fn play_read(&self) {
-        self.play_sound(HddSoundType::Read, 80);
+    /// Plays mouse down sound
+    pub fn play_mouse_down(&self) {
+        self.play_sound_file("mousedown.mp3");
     }
 
-    pub fn play_write(&self) {
-        self.play_sound(HddSoundType::Write, 80);
+    /// Plays mouse up sound
+    pub fn play_mouse_up(&self) {
+        self.play_sound_file("mouseup.mp3");
     }
 
+    /// Plays chimes sound for donations
+    pub fn play_chimes(&self) {
+        self.play_sound_file("chimes.mp3");
+    }
+
+    /// Toggles audio on/off
     pub fn toggle(&mut self) {
         self.enabled = !self.enabled;
         if !self.enabled {
@@ -188,7 +102,24 @@ impl AudioEngine {
         }
     }
 
+    /// Checks if audio is enabled
     pub fn is_enabled(&self) -> bool {
         self.enabled
+    }
+
+    // For compatibility with existing code - these functions map to the new sound files
+    pub fn play_seek(&self) {
+        // Use the hdd sound for seek operations
+        self.play_sound_file("hdd.mp3");
+    }
+
+    pub fn play_read(&self) {
+        // Use the hdd sound for read operations
+        self.play_sound_file("hdd.mp3");
+    }
+
+    pub fn play_write(&self) {
+        // Use the hdd sound for write operations
+        self.play_sound_file("hdd.mp3");
     }
 }

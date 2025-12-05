@@ -29,6 +29,72 @@ pub struct Args {
     pub sound: bool,
 }
 
+// -- Disk Drive Types ----------------------------------------------------------
+
+/// Represents different types of disk drives with different IOPS (Input/Output Operations Per Second)
+/// Based on real historical performance characteristics of different disk types
+#[derive(Debug, Clone)]
+pub struct DiskDrive {
+    pub letter: char,
+    pub capacity_mb: u32,
+    pub cluster_count: u32,
+    pub iops: u32,  // IOPS (Input/Output Operations Per Second) - affects audio playback speed
+    pub name: String,
+}
+
+impl DiskDrive {
+    /// Creates a new disk drive instance
+    fn new(letter: char, capacity_mb: u32, cluster_count: u32, iops: u32, name: &str) -> Self {
+        Self {
+            letter,
+            capacity_mb,
+            cluster_count,
+            iops,
+            name: name.to_string(),
+        }
+    }
+}
+
+/// Collection of available disk drives for the simulation
+pub struct DiskDriveCollection {
+    drives: Vec<DiskDrive>,
+}
+
+impl DiskDriveCollection {
+    /// Creates the default collection of disk drives
+    pub fn new() -> Self {
+        Self {
+            drives: vec![
+                // Based on the JavaScript implementation values
+                DiskDrive::new('C', 2048, 4096, 2, "Hard Disk (2GB, 2 IOPS)"),
+                DiskDrive::new('D', 1024, 2048, 3, "Hard Disk (1GB, 3 IOPS)"),
+                DiskDrive::new('E', 512, 1024, 1, "Floppy Disk (512MB, 1 IOPS)"),
+                DiskDrive::new('F', 2048, 4096, 8, "SSHD (2GB, 8 IOPS)"), // Faster modern hybrid drive
+            ],
+        }
+    }
+
+    /// Gets a reference to all available drives
+    pub fn get_all(&self) -> &[DiskDrive] {
+        &self.drives
+    }
+
+    /// Gets a disk drive by its letter
+    pub fn get_by_letter(&self, letter: char) -> Option<&DiskDrive> {
+        self.drives.iter().find(|drive| drive.letter == letter)
+    }
+
+    /// Gets drive by index
+    pub fn get_by_index(&self, index: usize) -> Option<&DiskDrive> {
+        self.drives.get(index)
+    }
+
+    /// Gets the default drive (first one)
+    pub fn get_default(&self) -> &DiskDrive {
+        &self.drives[0]  // Default to drive C
+    }
+}
+
 // -- Application State --------------------------------------------------------
 
 pub struct App {
@@ -49,8 +115,11 @@ pub struct App {
     pub selected_item: usize,
     // Dialog state
     pub show_about_box: bool,
-    // Audio
+    // Audio - now includes IOPS-based playback rate
     pub audio: Option<AudioEngine>,
+    // Disk drive information
+    pub current_drive: DiskDrive,
+    pub drive_collection: DiskDriveCollection,
 }
 
 impl App {
@@ -99,6 +168,10 @@ impl App {
 
         let total_to_defrag = clusters.iter().filter(|&&c| c == ClusterState::Pending).count() + 2; // +2 pour Reading/Writing initiaux
 
+        // Initialize the drive collection
+        let drive_collection = DiskDriveCollection::new();
+        let current_drive = drive_collection.get_default().clone();
+
         Self {
             running: true,
             tick_rate: Duration::from_millis(80), // Légèrement plus rapide
@@ -121,7 +194,18 @@ impl App {
             // Dialog state
             show_about_box: false,
             // Audio engine
-            audio: if enable_sound { AudioEngine::new() } else { None },
+            audio: if enable_sound {
+                let mut audio = AudioEngine::new();
+                if let Some(ref mut audio_engine) = audio {
+                    audio_engine.set_iops(current_drive.iops);
+                }
+                audio
+            } else {
+                None
+            },
+            // Disk drive information
+            current_drive,
+            drive_collection,
         }
     }
 
@@ -129,7 +213,7 @@ impl App {
         use crossterm::{
             event::{self, Event, KeyCode, KeyEventKind},
         };
-        
+
         let mut last_tick = Instant::now();
         while self.running {
             term.draw(|frame| crate::ui::render_app(&self, frame))?;
