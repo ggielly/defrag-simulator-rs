@@ -462,12 +462,22 @@ impl App {
                                     }
 
                                     // Mark more clusters as used if we're processing a large file
+                                    // Find additional clusters to process without borrowing issues
+                                    let mut additional_clusters_to_process = Vec::new();
                                     for i in 1..clusters_per_operation {
-                                        if let Some(next_reading_idx) = self.find_next_cluster_in_file(reading_idx, ClusterState::Reading) {
-                                            self.clusters[next_reading_idx] = ClusterState::Unused;
-                                            if let Some(ref audio) = self.audio {
-                                                audio.play_read();
+                                        // Look for the next Reading cluster without using a method that borrows self
+                                        for j in (reading_idx + 1)..self.clusters.len() {
+                                            if self.clusters[j] == ClusterState::Reading {
+                                                additional_clusters_to_process.push(j);
+                                                break;
                                             }
+                                        }
+                                    }
+
+                                    for next_reading_idx in additional_clusters_to_process {
+                                        self.clusters[next_reading_idx] = ClusterState::Unused;
+                                        if let Some(ref audio) = self.audio {
+                                            audio.play_read();
                                         }
                                     }
 
