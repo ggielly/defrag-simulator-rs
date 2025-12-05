@@ -142,6 +142,38 @@ pub struct FileFragment {
     pub is_fragmented: bool,
 }
 
+impl FileFragment {
+    /// Create a new file fragment
+    pub fn new(clusters: Vec<usize>) -> Self {
+        let size = clusters.len();
+        let is_fragmented = Self::check_fragmentation(&clusters);
+        Self { clusters, size, is_fragmented }
+    }
+    
+    /// Check if clusters are contiguous (not fragmented)
+    fn check_fragmentation(clusters: &[usize]) -> bool {
+        if clusters.len() <= 1 {
+            return false;
+        }
+        for window in clusters.windows(2) {
+            if window[1] != window[0] + 1 {
+                return true; // Not contiguous = fragmented
+            }
+        }
+        false
+    }
+    
+    /// Get the first cluster of this file
+    pub fn first_cluster(&self) -> Option<usize> {
+        self.clusters.first().copied()
+    }
+    
+    /// Get the last cluster of this file
+    pub fn last_cluster(&self) -> Option<usize> {
+        self.clusters.last().copied()
+    }
+}
+
 /// Represents the state of a file during defragmentation
 #[derive(Debug, Clone)]
 pub enum FileDefragPhase {
@@ -155,8 +187,68 @@ pub enum FileDefragPhase {
 
 // -- Application State --------------------------------------------------------
 
+/// Cache for tracking free space regions (optimization)
+#[derive(Debug, Clone)]
+pub struct FreeSpaceCache {
+    /// List of (start_index, length) for contiguous free regions
+    regions: Vec<(usize, usize)>,
+    /// Whether the cache needs rebuilding
+    dirty: bool,
+}
+
+impl FreeSpaceCache {
+    pub fn new() -> Self {
+        Self {
+            regions: Vec::new(),
+            dirty: true,
+        }
+    }
+    
+    /// Mark cache as needing rebuild
+    pub fn invalidate(&mut self) {
+        self.dirty = true;
+    }
+    
+    /// Rebuild the cache from cluster state
+    pub fn rebuild(&mut self, clusters: &[ClusterState]) {
+        self.regions.clear();
+        let mut start: Option<usize> = None;
+        let mut length = 0;
+        
+        for (i, &cluster) in clusters.iter().enumerate() {
+            if cluster == ClusterState::Unused {
+                if start.is_none() {
+                    start = Some(i);
+                }
+                length += 1;
+            } else if let Some(s) = start {
+                self.regions.push((s, length));
+                start = None;
+                length = 0;
+            }
+        }
+        
+        // Don't forget the last region
+        if let Some(s) = start {
+            self.regions.push((s, length));
+        }
+        
+        // Sort by size (largest first) for better allocation
+        self.regions.sort_by(|a, b| b.1.cmp(&a.1));
+        self.dirty = false;
+    }
+    
+    /// Find a region with at least `size` contiguous clusters
+    pub fn find_region(&self, size: usize) -> Option<usize> {
+        self.regions.iter()
+            .find(|(_, len)| *len >= size)
+            .map(|(start, _)| *start)
+    }
+}
+
 pub struct App {
     pub running: bool,
+    pub paused: bool,  // NEW: Pause state
     pub tick_rate: Duration,
     pub width: usize,
     pub height: usize,
@@ -182,6 +274,13 @@ pub struct App {
     pub drive_collection: DiskDriveCollection,
     // UI style (MS-DOS, Win95, Win98)
     pub ui_style: DefragStyle,
+    // Performance optimization: cache of free space regions
+    free_space_cache: FreeSpaceCache,
+    // Demo mode: auto-restart when finished
+    pub demo_mode: bool,
+    // Pending clusters index cache (optimization)
+    pending_indices_cache: Vec<usize>,
+    pending_cache_dirty: bool,
 }
 
 impl App {
@@ -239,6 +338,7 @@ impl App {
 
         Self {
             running: true,
+            paused: false,
             tick_rate: Duration::from_millis(animation::DEFAULT_TICK_RATE_MS),
             width,
             height,
@@ -274,7 +374,113 @@ impl App {
             drive_collection,
             // UI style
             ui_style,
+            // Performance caches
+            free_space_cache: FreeSpaceCache::new(),
+            demo_mode: false,
+            pending_indices_cache: Vec::new(),
+            pending_cache_dirty: true,
         }
+    }
+    
+    /// Toggle pause state
+    pub fn toggle_pause(&mut self) {
+        if self.phase == DefragPhase::Defragmenting || self.phase == DefragPhase::Analyzing {
+            self.paused = !self.paused;
+            // Stop audio when paused
+            if self.paused {
+                if let Some(ref audio) = self.audio {
+                    audio.stop_all();
+                }
+            }
+        }
+    }
+    
+    /// Toggle demo mode (auto-restart)
+    pub fn toggle_demo_mode(&mut self) {
+        self.demo_mode = !self.demo_mode;
+    }
+    
+    /// Restart defragmentation from the beginning
+    pub fn restart(&mut self) {
+        let mut rng = rand::thread_rng();
+        let total_clusters = self.width * self.height;
+        let fill_percent = ui_const::DEFAULT_FILL_PERCENT;
+        
+        // Recréer les clusters
+        let num_pending = (total_clusters as f32 * fill_percent) as usize;
+        let num_bad = (total_clusters as f32 * ui_const::BAD_BLOCK_PERCENT) as usize;
+        
+        self.clusters.clear();
+        for _ in 0..(num_pending.saturating_sub(2)) {
+            self.clusters.push(ClusterState::Pending);
+        }
+        self.clusters.push(ClusterState::Writing);
+        self.clusters.push(ClusterState::Reading);
+        while self.clusters.len() < total_clusters - num_bad {
+            self.clusters.push(ClusterState::Unused);
+        }
+        self.clusters.shuffle(&mut rng);
+        
+        let mut bad_positions: Vec<usize> = (0..self.clusters.len()).collect();
+        bad_positions.shuffle(&mut rng);
+        for &pos in bad_positions.iter().take(num_bad) {
+            self.clusters.insert(pos.min(self.clusters.len()), ClusterState::Bad);
+        }
+        self.clusters.truncate(total_clusters);
+        if !self.clusters.is_empty() {
+            self.clusters[0] = ClusterState::Unmovable;
+        }
+        
+        // Reset stats
+        let total_to_defrag = self.clusters.iter().filter(|&&c| c == ClusterState::Pending).count() + 2;
+        self.stats = DefragStats {
+            total_to_defrag,
+            clusters_defragged: 0,
+            start_time: Instant::now(),
+        };
+        
+        // Reset state
+        self.phase = DefragPhase::Initializing;
+        self.animation_step = 0;
+        self.read_pos = None;
+        self.write_pos = None;
+        self.current_file_read_progress = None;
+        self.paused = false;
+        
+        // Invalidate caches
+        self.free_space_cache.invalidate();
+        self.pending_cache_dirty = true;
+    }
+    
+    /// Calculate estimated time remaining
+    pub fn estimated_time_remaining(&self) -> Option<Duration> {
+        if self.stats.clusters_defragged == 0 || self.phase != DefragPhase::Defragmenting {
+            return None;
+        }
+        
+        let elapsed = self.stats.start_time.elapsed();
+        let remaining = self.stats.total_to_defrag.saturating_sub(self.stats.clusters_defragged);
+        
+        if remaining == 0 {
+            return Some(Duration::ZERO);
+        }
+        
+        // Calculate rate (clusters per second)
+        let rate = self.stats.clusters_defragged as f64 / elapsed.as_secs_f64();
+        if rate <= 0.0 {
+            return None;
+        }
+        
+        let remaining_secs = remaining as f64 / rate;
+        Some(Duration::from_secs_f64(remaining_secs))
+    }
+    
+    /// Get progress percentage
+    pub fn progress_percent(&self) -> f32 {
+        if self.stats.total_to_defrag == 0 {
+            return 100.0;
+        }
+        (self.stats.clusters_defragged as f32 / self.stats.total_to_defrag as f32) * 100.0
     }
 
     pub fn run(&mut self, term: &mut crate::ui::TuiWrapper, rx: mpsc::Receiver<()>) -> Result<()> {
@@ -420,8 +626,14 @@ impl App {
                 let mut rng = rand::thread_rng();
 
                 // Calculate the speed factor based on the drive's IOPS
-                // Higher IOPS means faster operations
+                // Higher IOPS means faster operations (lower delay between operations)
                 let speed_factor = 1.0 / (self.current_drive.iops() as f64).max(1.0);
+                
+                // Dynamically adjust tick rate based on drive speed
+                // Faster drives (higher IOPS) = shorter tick rate = faster animation
+                let base_tick_ms = animation::DEFAULT_TICK_RATE_MS as f64;
+                let adjusted_tick_ms = (base_tick_ms * speed_factor).max(20.0) as u64;
+                self.tick_rate = Duration::from_millis(adjusted_tick_ms);
 
                 // Determine how many clusters to process based on IOPS (faster drives process more at once)
                 let clusters_per_operation = (self.current_drive.iops() as usize).max(1);
@@ -490,13 +702,14 @@ impl App {
                                     // Mark more clusters as used if we're processing a large file
                                     // Find additional clusters to process without borrowing issues
                                     let mut additional_clusters_to_process = Vec::new();
-                                    for i in 1..clusters_per_operation {
-                                        // Look for the next Reading cluster without using a method that borrows self
-                                        for j in (reading_idx + 1)..self.clusters.len() {
-                                            if self.clusters[j] == ClusterState::Reading {
-                                                additional_clusters_to_process.push(j);
-                                                break;
-                                            }
+                                    let mut found_count = 0;
+                                    for j in (reading_idx + 1)..self.clusters.len() {
+                                        if found_count >= clusters_per_operation - 1 {
+                                            break;
+                                        }
+                                        if self.clusters[j] == ClusterState::Reading {
+                                            additional_clusters_to_process.push(j);
+                                            found_count += 1;
                                         }
                                     }
 
@@ -625,13 +838,28 @@ impl App {
     }
 
     /// Find the next cluster of a given state after a specific position
-    fn find_next_cluster_in_file(&self, start_pos: usize, state: ClusterState) -> Option<usize> {
+    pub fn find_next_cluster_in_file(&self, start_pos: usize, state: ClusterState) -> Option<usize> {
         for i in (start_pos + 1)..self.clusters.len() {
             if self.clusters[i] == state {
                 return Some(i);
             }
         }
         None
+    }
+    
+    /// Count clusters of a specific state
+    pub fn count_clusters(&self, state: ClusterState) -> usize {
+        self.clusters.iter().filter(|&&c| c == state).count()
+    }
+    
+    /// Get fragmentation percentage (0.0 to 1.0)
+    pub fn fragmentation_percent(&self) -> f32 {
+        let pending = self.count_clusters(ClusterState::Pending);
+        let total_data = pending + self.count_clusters(ClusterState::Used);
+        if total_data == 0 {
+            return 0.0;
+        }
+        pending as f32 / total_data as f32
     }
 }
 

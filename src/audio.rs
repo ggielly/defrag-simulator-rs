@@ -139,6 +139,17 @@ impl AudioEngine {
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
+    
+    /// Plays a looping background sound (ambient drive noise)
+    /// This creates continuous background ambiance during defragmentation
+    pub fn play_loop_sound(&self) {
+        self.play_embedded_sound(EmbeddedAudioResources::loop_sound());
+    }
+    
+    /// Stops all currently playing sounds
+    pub fn stop_all(&self) {
+        self.sink.stop();
+    }
 
     // For compatibility with existing code - these functions map to the new sound files
     pub fn play_seek(&self) {
