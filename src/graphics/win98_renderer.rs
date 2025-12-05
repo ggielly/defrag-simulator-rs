@@ -150,9 +150,6 @@ impl Win98GraphicalRenderer {
     
     /// Main run loop for the graphical renderer
     pub fn run(&mut self, app: &mut App) -> Result<(), String> {
-        // Load fonts
-        let fonts = FontManager::new(&self.backend.ttf_context)?;
-        
         let target_fps = 60;
         let frame_duration = Duration::from_micros(1_000_000 / target_fps);
         
@@ -168,8 +165,8 @@ impl Win98GraphicalRenderer {
             // Update UI state from app
             self.update_ui_state(app);
             
-            // Render
-            self.render(app, &fonts);
+            // Render (fonts are loaded each frame due to lifetime constraints)
+            self.render_frame(app)?;
             
             // Cap frame rate
             let elapsed = frame_start.elapsed();
@@ -177,6 +174,49 @@ impl Win98GraphicalRenderer {
                 std::thread::sleep(frame_duration - elapsed);
             }
         }
+        
+        Ok(())
+    }
+    
+    /// Render a single frame (loads fonts fresh to avoid lifetime issues)
+    fn render_frame(&mut self, app: &App) -> Result<(), String> {
+        // Load fonts for this frame
+        let fonts = FontManager::new(&self.backend.ttf_context)?;
+        
+        // Clear with desktop color
+        self.backend.clear();
+        
+        // Draw window
+        self.window_widget.draw(&mut self.backend.canvas);
+        
+        // Draw title bar text
+        self.draw_title_text(&fonts);
+        
+        // Draw disk panel
+        self.disk_panel.draw(&mut self.backend.canvas);
+        
+        // Draw disk grid
+        self.draw_disk_grid(app);
+        
+        // Draw legend
+        self.draw_legend(app, &fonts);
+        
+        // Draw progress bar
+        self.progress_bar.draw(&mut self.backend.canvas);
+        
+        // Draw progress text
+        self.draw_progress_text(app, &fonts);
+        
+        // Draw buttons
+        self.settings_button.draw(&mut self.backend.canvas);
+        self.start_pause_button.draw(&mut self.backend.canvas);
+        self.stop_button.draw(&mut self.backend.canvas);
+        
+        // Draw button text
+        self.draw_button_text(&fonts);
+        
+        // Present
+        self.backend.present();
         
         Ok(())
     }
@@ -360,12 +400,15 @@ impl Win98GraphicalRenderer {
     }
     
     /// Main render function
-    fn render(&mut self, app: &App) {
+    fn render(&mut self, app: &App, fonts: &FontManager) {
         // Clear with desktop color
         self.backend.clear();
         
         // Draw window
         self.window_widget.draw(&mut self.backend.canvas);
+        
+        // Draw title bar text
+        self.draw_title_text(fonts);
         
         // Draw disk panel
         self.disk_panel.draw(&mut self.backend.canvas);
@@ -374,21 +417,21 @@ impl Win98GraphicalRenderer {
         self.draw_disk_grid(app);
         
         // Draw legend
-        self.draw_legend(app);
+        self.draw_legend(app, fonts);
         
         // Draw progress bar
         self.progress_bar.draw(&mut self.backend.canvas);
         
         // Draw progress text
-        self.draw_progress_text(app);
+        self.draw_progress_text(app, fonts);
         
         // Draw buttons
         self.settings_button.draw(&mut self.backend.canvas);
         self.start_pause_button.draw(&mut self.backend.canvas);
         self.stop_button.draw(&mut self.backend.canvas);
         
-        // Draw button text (we need TTF for proper text, using placeholders)
-        self.draw_button_text();
+        // Draw button text
+        self.draw_button_text(fonts);
         
         // Present
         self.backend.present();
