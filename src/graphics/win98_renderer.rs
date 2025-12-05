@@ -5,6 +5,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use std::time::{Duration, Instant};
 
+use super::fonts::{FontManager, FontSize, TextRenderer};
 use super::sdl_backend::{colors, SdlBackend, SdlConfig, SdlEvent};
 use super::win98_widgets::{Button, ButtonState, ProgressBar, SunkenPanel, Win98WindowWidget};
 use crate::app::App;
@@ -149,6 +150,9 @@ impl Win98GraphicalRenderer {
     
     /// Main run loop for the graphical renderer
     pub fn run(&mut self, app: &mut App) -> Result<(), String> {
+        // Load fonts
+        let fonts = FontManager::new(&self.backend.ttf_context)?;
+        
         let target_fps = 60;
         let frame_duration = Duration::from_micros(1_000_000 / target_fps);
         
@@ -165,7 +169,7 @@ impl Win98GraphicalRenderer {
             self.update_ui_state(app);
             
             // Render
-            self.render(app);
+            self.render(app, &fonts);
             
             // Cap frame rate
             let elapsed = frame_start.elapsed();
@@ -418,7 +422,7 @@ impl Win98GraphicalRenderer {
     }
     
     /// Draw the legend (Not defragmented, In progress, Defragmented)
-    fn draw_legend(&mut self, _app: &App) {
+    fn draw_legend(&mut self, _app: &App, fonts: &FontManager) {
         let legend_y = self.disk_panel.area.y + self.disk_panel.area.height as i32 + 8;
         let client = self.window_widget.client_area();
         
@@ -426,28 +430,114 @@ impl Win98GraphicalRenderer {
         let item_width = (client.width / 3) as i32;
         
         // Not defragmented (navy)
-        let x1 = client.x + item_width / 2 - 50;
+        let x1 = client.x + 16;
         self.backend.fill_rect(x1, legend_y, 12, 12, colors::DEFRAG_IDLE);
+        let _ = TextRenderer::draw_text(
+            &mut self.backend.canvas,
+            fonts.get_font(FontSize::Small),
+            "Not defragmented",
+            x1 + 16,
+            legend_y - 1,
+            colors::TEXT,
+        );
         
         // In progress (red)
-        let x2 = client.x + item_width + item_width / 2 - 40;
+        let x2 = client.x + item_width + 16;
         self.backend.fill_rect(x2, legend_y, 12, 12, colors::DEFRAG_PROGRESS);
+        let _ = TextRenderer::draw_text(
+            &mut self.backend.canvas,
+            fonts.get_font(FontSize::Small),
+            "In progress",
+            x2 + 16,
+            legend_y - 1,
+            colors::TEXT,
+        );
         
         // Defragmented (cyan)
-        let x3 = client.x + item_width * 2 + item_width / 2 - 40;
+        let x3 = client.x + item_width * 2 + 16;
         self.backend.fill_rect(x3, legend_y, 12, 12, colors::DEFRAG_DONE);
+        let _ = TextRenderer::draw_text(
+            &mut self.backend.canvas,
+            fonts.get_font(FontSize::Small),
+            "Defragmented",
+            x3 + 16,
+            legend_y - 1,
+            colors::TEXT,
+        );
     }
     
-    /// Draw progress text (without proper font, we'll skip for now)
-    fn draw_progress_text(&mut self, _app: &App) {
-        // TODO: Use TTF font to draw "XX% completed" text
-        // For now, the progress bar shows the progress visually
+    /// Draw progress text
+    fn draw_progress_text(&mut self, app: &App, fonts: &FontManager) {
+        let progress = if app.stats.total_to_defrag > 0 {
+            (app.stats.clusters_defragged as f64 / app.stats.total_to_defrag as f64 * 100.0) as u32
+        } else {
+            0
+        };
+        
+        let text = format!("{}% completed", progress);
+        let y = self.progress_bar.area.y - 18;
+        let _ = TextRenderer::draw_text(
+            &mut self.backend.canvas,
+            fonts.get_font(FontSize::Normal),
+            &text,
+            self.progress_bar.area.x,
+            y,
+            colors::TEXT,
+        );
     }
     
-    /// Draw button text (placeholder - needs TTF)
-    fn draw_button_text(&mut self) {
-        // TODO: Use TTF font to render button labels
-        // For now, buttons show their state through borders
+    /// Draw button text
+    fn draw_button_text(&mut self, fonts: &FontManager) {
+        // Settings button
+        let _ = TextRenderer::draw_text_centered(
+            &mut self.backend.canvas,
+            fonts.get_font(FontSize::Normal),
+            &self.settings_button.text,
+            self.settings_button.area.x,
+            self.settings_button.area.y + 4,
+            self.settings_button.area.width,
+            colors::TEXT,
+        );
+        
+        // Start/Pause button
+        let _ = TextRenderer::draw_text_centered(
+            &mut self.backend.canvas,
+            fonts.get_font(FontSize::Normal),
+            &self.start_pause_button.text,
+            self.start_pause_button.area.x,
+            self.start_pause_button.area.y + 4,
+            self.start_pause_button.area.width,
+            colors::TEXT,
+        );
+        
+        // Stop button
+        let stop_color = if self.stop_button.state == ButtonState::Disabled {
+            colors::BUTTON_SHADOW
+        } else {
+            colors::TEXT
+        };
+        let _ = TextRenderer::draw_text_centered(
+            &mut self.backend.canvas,
+            fonts.get_font(FontSize::Normal),
+            &self.stop_button.text,
+            self.stop_button.area.x,
+            self.stop_button.area.y + 4,
+            self.stop_button.area.width,
+            stop_color,
+        );
+    }
+    
+    /// Draw title bar text
+    fn draw_title_text(&mut self, fonts: &FontManager) {
+        let title_area = self.window_widget.title_bar_area();
+        let _ = TextRenderer::draw_text(
+            &mut self.backend.canvas,
+            fonts.get_font(FontSize::Title),
+            &self.window_widget.title,
+            title_area.x + 4,
+            title_area.y + 2,
+            colors::WHITE,
+        );
     }
 }
 
