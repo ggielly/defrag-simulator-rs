@@ -3,6 +3,10 @@
 
 Grab a drink and idle behind a smoothing experience of a DOS disk defragmentation.
 
+You can choose having a more relaxing defrag experience with oldschool HDD sounds based on hdd's speed : between 1 or 8 IOPS ! 
+
+
+
 ![disk-defrag](defrag-simulator01.png)
 
 ![disk-defrag](defrag-simulator02.png)
