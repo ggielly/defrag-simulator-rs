@@ -290,7 +290,23 @@ impl SdlBackend {
         
         let centered_x = x + ((width as i32 - text_width as i32) / 2);
         
-        self.draw_text(text, centered_x, y, size, color)
+        // Inline draw_text to avoid borrow issues
+        let surface = font
+            .render(text)
+            .blended(color)
+            .map_err(|e| format!("Failed to render text: {}", e))?;
+        
+        let texture = self.texture_creator
+            .create_texture_from_surface(&surface)
+            .map_err(|e| format!("Failed to create texture: {}", e))?;
+        
+        let sdl2::render::TextureQuery { width: tw, height: th, .. } = texture.query();
+        
+        let target = Rect::new(centered_x, y, tw, th);
+        self.canvas.copy(&texture, None, Some(target))
+            .map_err(|e| format!("Failed to copy texture: {}", e))?;
+        
+        Ok((tw, th))
     }
     
     /// Check if still running
