@@ -3,6 +3,11 @@ name = "defrag-rs"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["terminal"]
+terminal = []
+graphical = ["sdl2"]
+
 [dependencies]
 crossterm = "0.27"
 rand = "0.8"
@@ -10,3 +15,7 @@ clap = { version = "4.0", features = ["derive"] }
 ratatui = { version = "0.29.0", features = ["crossterm"] }
 ctrlc = "3.5.1"
 rodio = { version = "0.19", default-features = false, features = ["wav", "mp3"] }
+
+# SDL2 for graphical Win95/Win98 interfaces
+# Requires: sudo apt install libsdl2-dev libsdl2-ttf-dev
+sdl2 = { version = "0.37", optional = true, features = ["ttf"] }

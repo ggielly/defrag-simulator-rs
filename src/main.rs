@@ -6,13 +6,39 @@ mod app;
 mod ui;
 mod models;
 pub mod constants;
+pub mod win98;
+
+#[cfg(feature = "graphical")]
+pub mod graphics;
 
 // -- Main Application Logic ---------------------------------------------------
 
 fn main() -> Result<()> {
     let args = app::Args::parse();
     let (width, height) = app::parse_size(&args.size).unwrap_or((78, 16));
+    let ui_style = args.get_ui_style();
 
+    // Check if we should use graphical mode for Win98/Win95
+    #[cfg(feature = "graphical")]
+    {
+        use crate::constants::defrag_type::DefragStyle;
+        
+        if matches!(ui_style, DefragStyle::Windows98 | DefragStyle::Windows95) {
+            // Run graphical mode
+            let mut app = app::App::new(width, height, args.fill, args.sound, args.drive, ui_style);
+            
+            if let Err(e) = graphics::win98_renderer::run_win98_graphical(&mut app) {
+                eprintln!("Graphical mode failed: {}", e);
+                eprintln!("Falling back to terminal mode...");
+                // Fall through to terminal mode
+            } else {
+                return Ok(());
+            }
+        }
+    }
+
+    // Terminal mode (MS-DOS style or fallback)
+    
     // Setup terminal
     let mut tui = ui::TuiWrapper::new()?;
 
@@ -23,8 +49,8 @@ fn main() -> Result<()> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    // Create and run app
-    let mut app = app::App::new(width, height, args.fill, args.sound, args.drive);
+    // Create and run app with selected UI style
+    let mut app = app::App::new(width, height, args.fill, args.sound, args.drive, ui_style);
     app.run(&mut tui, rx)?;
 
     // Restore terminal

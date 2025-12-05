@@ -5,7 +5,7 @@ use std::{
 };
 use crate::models::{ClusterState, DefragPhase, DefragStats};
 use crate::audio::AudioEngine;
-use crate::constants::{disk, audio as audio_const, animation, ui as ui_const};
+use crate::constants::{disk, audio as audio_const, animation, ui as ui_const, defrag_type::DefragStyle};
 use rand::prelude::{SliceRandom, Rng};
 
 // -- CLI Arguments ------------------------------------------------------------
@@ -32,6 +32,21 @@ pub struct Args {
     /// Select disk drive (C, D, E, or F)
     #[arg(long, short = 'd', default_value = "C")]
     pub drive: char,
+    
+    /// UI style: msdos, win95, or win98
+    #[arg(long, short = 'u', default_value = "msdos")]
+    pub ui: String,
+}
+
+impl Args {
+    /// Parse the UI style from the command line argument
+    pub fn get_ui_style(&self) -> DefragStyle {
+        match self.ui.to_lowercase().as_str() {
+            "win98" | "windows98" | "98" => DefragStyle::Windows98,
+            "win95" | "windows95" | "95" => DefragStyle::Windows95,
+            _ => DefragStyle::MsDos,
+        }
+    }
 }
 
 // -- Disk Drive Types ----------------------------------------------------------
@@ -165,10 +180,12 @@ pub struct App {
     // Disk drive information
     pub current_drive: DiskDrive,
     pub drive_collection: DiskDriveCollection,
+    // UI style (MS-DOS, Win95, Win98)
+    pub ui_style: DefragStyle,
 }
 
 impl App {
-    pub fn new(width: usize, height: usize, fill_percent: f32, enable_sound: bool, drive_letter: char) -> Self {
+    pub fn new(width: usize, height: usize, fill_percent: f32, enable_sound: bool, drive_letter: char, ui_style: DefragStyle) -> Self {
         let total_clusters = width * height;
         let mut rng = rand::thread_rng();
 
@@ -255,6 +272,8 @@ impl App {
             // Disk drive information
             current_drive,
             drive_collection,
+            // UI style
+            ui_style,
         }
     }
 
@@ -265,7 +284,14 @@ impl App {
 
         let mut last_tick = Instant::now();
         while self.running {
-            term.draw(|frame| crate::ui::render_app(&self, frame))?;
+            // Render based on UI style
+            term.draw(|frame| {
+                match self.ui_style {
+                    DefragStyle::Windows98 => crate::win98::render_win98_app(&self, frame),
+                    DefragStyle::Windows95 => crate::win98::render_win98_app(&self, frame), // TODO: implement Win95
+                    DefragStyle::MsDos => crate::ui::render_app(&self, frame),
+                }
+            })?;
 
             // Handle Ctrl+C
             if rx.try_recv().is_ok() {
