@@ -270,7 +270,18 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(Paragraph::new(Line::from(line4_spans)).style(Style::new().on_blue()), footer_layout[3]);
 
     // Line 5: Status (Text) + Legend (Drive Info)
-    let line5 = "│            Full Optimization           ││ Drive C: ░ = Unused Space             │";
+    let status_text = app.current_filename.as_deref()
+        .filter(|_| app.phase == DefragPhase::Defragmenting)
+        .unwrap_or("Full Optimization");
+
+    let truncated_status = if status_text.len() > 36 {
+        &status_text[..36]
+    } else {
+        status_text
+    };
+    let line5_part1 = format!("│ {:^38} │", truncated_status);
+
+    let line5 = format!("{}│ Drive C: ░ = Unused Space             │", line5_part1);
     frame.render_widget(Paragraph::new(line5).style(Style::new().on_blue()), footer_layout[4]);
 
     // Line 6: Bottom Border
