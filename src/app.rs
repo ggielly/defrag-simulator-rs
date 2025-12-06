@@ -682,11 +682,9 @@ impl App {
                         // Trouver suffisamment de blocs contigus Unused pour écrire le fichier entier
                         if let Some(unused_start_idx) = self.find_contiguous_unused_clusters(file_size) {
                             // Mark the appropriate number of clusters as Writing in sequence
-                            let mut write_positions = Vec::new();
                             for i in 0..file_size.min(clusters_per_operation) {
                                 if unused_start_idx + i < self.clusters.len() {
                                     self.clusters[unused_start_idx + i] = ClusterState::Writing;
-                                    write_positions.push(unused_start_idx + i);
                                 }
                             }
 
@@ -697,6 +695,16 @@ impl App {
                             self.current_file_read_progress = Some(FileDefragPhase::Reading {
                                 progress: 0
                             });
+                        } else {
+                            // No contiguous space found - just convert this pending block to Used directly
+                            // This simulates "in-place" optimization when disk is too fragmented
+                            self.clusters[pending_idx] = ClusterState::Used;
+                            self.stats.clusters_defragged += 1;
+                            self.read_pos = None;
+                            // Play write sound for the conversion
+                            if let Some(ref audio) = self.audio {
+                                audio.play_write();
+                            }
                         }
                     } else {
                         // Plus de blocs Pending, défragmentation terminée
@@ -834,17 +842,27 @@ impl App {
             return None;
         }
 
-        // Rebuild cache if dirty
-        if self.free_space_cache.dirty {
-            self.free_space_cache.rebuild(&self.clusters);
+        // Simple linear scan - reliable and correct
+        // Cache optimization can be added later once basic functionality works
+        let mut current_run = 0;
+        let mut start_pos: Option<usize> = None;
+
+        for (i, &cluster) in self.clusters.iter().enumerate() {
+            if cluster == ClusterState::Unused {
+                if current_run == 0 {
+                    start_pos = Some(i);
+                }
+                current_run += 1;
+
+                if current_run >= size {
+                    return start_pos;
+                }
+            } else {
+                current_run = 0;
+                start_pos = None;
+            }
         }
         
-        // Try cache first (much faster for large disks)
-        if let Some(start) = self.free_space_cache.find_region(size) {
-            return Some(start);
-        }
-        
-        // No suitable region found
         None
     }
     
