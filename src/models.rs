@@ -2,13 +2,13 @@ use std::time::Instant;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ClusterState {
-    Used,       // Bloc déjà défragmenté (vert)
-    Unused,     // Bloc libre
-    Pending,    // Bloc à défragmenter (blanc)
-    Bad,        // Bloc défectueux
-    Unmovable,  // Bloc système non déplaçable
-    Reading,    // Bloc en cours de lecture
-    Writing,    // Bloc en cours d'écriture
+    Used,       // Already defragmented block (green)
+    Unused,     // Free block
+    Pending,    // Block to be defragmented (white)
+    Bad,        // Bad block
+    Unmovable,  // Unmovable system block
+    Reading,    // Block being read
+    Writing,    // Block being written
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -21,7 +21,7 @@ pub enum DefragPhase {
 
 #[derive(Clone)]
 pub struct DefragStats {
-    pub total_to_defrag: usize,  // Nombre total de clusters à défragmenter
-    pub clusters_defragged: usize, // Nombre de clusters défragmentés
+    pub total_to_defrag: usize,  // Total number of clusters to defragment
+    pub clusters_defragged: usize, // Number of defragmented clusters
     pub start_time: Instant,
 }

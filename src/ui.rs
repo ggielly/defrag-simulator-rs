@@ -45,62 +45,50 @@ impl TuiWrapper {
 }
 
 pub fn render_app(app: &App, frame: &mut Frame) {
-    // Clear the frame with a blue background
     frame.render_widget(Block::new().style(Style::new().on_blue()), frame.area());
 
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // Header
-            Constraint::Min(0),    // Main window (grid + borders)
-            Constraint::Length(7), // Footer
+            Constraint::Length(1), 
+            Constraint::Min(0),    
+            Constraint::Length(7),
         ])
         .split(frame.area());
 
     render_header(app, frame, main_layout[0]);
 
-    // Create the main window with a double border
     let main_window_block = Block::new()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
         .style(Style::new().on_blue());
 
-    // Get the inner area for the grid
     let grid_area = main_window_block.inner(main_layout[1]);
 
-    // Render the block first, then the grid inside
     frame.render_widget(main_window_block, main_layout[1]);
     render_grid(app, frame, grid_area);
 
     render_footer(app, frame, main_layout[2]);
-
-    // Rendre le menu déroulant par-dessus tout
     render_menu_dropdown(app, frame, frame.area());
-
-    // Rendre l'About Box par-dessus tout
     render_about_box(app, frame);
 }
 
 fn render_header(app: &App, frame: &mut Frame, area: Rect) {
-    // Construire le header avec les menus - style MS-DOS
     let menu_names = get_menu_names();
     let mut spans = Vec::new();
 
     spans.push(Span::raw(" "));
 
     for (i, name) in menu_names.iter().enumerate() {
-        // Première lettre soulignée (style MS-DOS)
         let first_char = name.chars().next().unwrap_or(' ');
         let rest = &name[first_char.len_utf8()..];
 
         if app.menu_open && app.selected_menu == i {
-            // Menu sélectionné - inversé
             spans.push(Span::styled(
                 format!(" {} ", name),
                 Style::new().black().on_cyan(),
             ));
         } else {
-            // Menu normal avec première lettre en rouge
             spans.push(Span::raw(" "));
             spans.push(Span::styled(
                 first_char.to_string(),
@@ -114,14 +102,13 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
         spans.push(Span::styled("  ", Style::new().black().on_white()));
     }
 
-    // Remplir le reste avec des espaces et ajouter F1=Help
     let current_len: usize = spans.iter().map(|s| s.content.len()).sum();
     let padding = area.width as usize - current_len - 9;
     spans.push(Span::styled(
         " ".repeat(padding),
         Style::new().black().on_white(),
     ));
-    spans.push(Span::styled("F1=Help  ", Style::new().black().on_white()));
+    spans.push(Span::styled("Esc=Quit", Style::new().black().on_white()));
 
     let header = Paragraph::new(Line::from(spans));
     frame.render_widget(header, area);
@@ -137,23 +124,19 @@ fn render_menu_dropdown(app: &App, frame: &mut Frame, area: Rect) {
         return;
     }
 
-    // Calculer la position X du menu
     let menu_positions = [1, 12, 22, 29, 36];
     let menu_x = menu_positions.get(app.selected_menu).copied().unwrap_or(1) as u16;
 
-    // Trouver la largeur maximale des items
     let max_width = items.iter().map(|s| s.len()).max().unwrap_or(10) + 4;
     let menu_height = items.len() as u16 + 2;
 
-    // Zone du menu déroulant
     let menu_area = Rect::new(
         area.x + menu_x,
-        area.y + 1, // Juste sous le header
+        area.y + 1, 
         max_width as u16,
         menu_height,
     );
 
-    // Dessiner le fond du menu
     let menu_block = Block::new()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
@@ -161,7 +144,6 @@ fn render_menu_dropdown(app: &App, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(menu_block.clone(), menu_area);
 
-    // Dessiner les items
     let inner = menu_block.inner(menu_area);
     for (i, item) in items.iter().enumerate() {
         if i as u16 >= inner.height {
@@ -171,12 +153,10 @@ fn render_menu_dropdown(app: &App, frame: &mut Frame, area: Rect) {
         let item_area = Rect::new(inner.x, inner.y + i as u16, inner.width, 1);
 
         if item.is_empty() {
-            // Séparateur
             let sep = Paragraph::new("─".repeat(inner.width as usize))
                 .style(Style::new().fg(Color::DarkGray).bg(Color::White));
             frame.render_widget(sep, item_area);
         } else if i == app.selected_item {
-            // Item sélectionné
             let selected = Paragraph::new(format!(
                 " {:<width$}",
                 item,
@@ -185,7 +165,6 @@ fn render_menu_dropdown(app: &App, frame: &mut Frame, area: Rect) {
             .style(Style::new().fg(Color::White).bg(Color::Black));
             frame.render_widget(selected, item_area);
         } else {
-            // Item normal
             let normal = Paragraph::new(format!(" {}", item))
                 .style(Style::new().fg(Color::Black).bg(Color::White));
             frame.render_widget(normal, item_area);
@@ -201,21 +180,19 @@ fn render_grid(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
-    // This is the detailed footer implementation from before
     let footer_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // Top border
-            Constraint::Length(1), // Row 1
-            Constraint::Length(1), // Row 2
-            Constraint::Length(1), // Row 3
-            Constraint::Length(1), // Row 4
-            Constraint::Length(1), // Bottom border
-            Constraint::Length(1), // Action line
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
         ])
         .split(area);
 
-    // Line 1: Top Border
     let top_border =
         "┌──────────────── Status ────────────────┐┌──────────────── Legend ────────────────┐";
     frame.render_widget(
@@ -223,7 +200,6 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         footer_layout[0],
     );
 
-    // Line 2: Status (Cluster, Percent) + Legend (Passed/Used, Pending)
     let percent = if app.stats.total_to_defrag == 0 {
         100.0
     } else {
@@ -246,7 +222,6 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         footer_layout[1],
     );
 
-    // Line 3: Status (Progress Bar) + Legend (Reading, Writing)
     let progress_bar = create_progress_bar(percent);
     let line3_spans = vec![
         Span::raw(format!("│ {} │", progress_bar)),
@@ -261,7 +236,6 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         footer_layout[2],
     );
 
-    // Line 4: Status (Elapsed time + estimated) + Legend (Bad, Unmovable)
     let elapsed = app.stats.start_time.elapsed();
     let elapsed_str = format!(
         "{:02}:{:02}:{:02}",
@@ -293,9 +267,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         footer_layout[3],
     );
 
-    // Line 5: Status (Text) + Legend (Drive Info)
     let status_text = if let Some(filename) = &app.current_filename {
-        // Truncate filename to fit, keeping it centered
         let max_len = 38;
         let display_name = if filename.len() > max_len {
             &filename[..max_len]
@@ -315,7 +287,6 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         footer_layout[4],
     );
 
-    // Line 6: Bottom Border
     let bottom_border =
         "└────────────────────────────────────────┘└────────────────────────────────────────┘";
     frame.render_widget(
@@ -323,8 +294,6 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         footer_layout[5],
     );
 
-    // --- Action Line ---
-    // Messages d'action aléatoires comme dans l'implémentation PHP
     let action_text = if app.paused {
         "[ PAUSED ]"
     } else {
@@ -332,7 +301,6 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
             DefragPhase::Initializing => "Initializing...",
             DefragPhase::Analyzing => "Analyzing disk...",
             DefragPhase::Defragmenting => {
-                // Alterner entre les messages comme dans PHP
                 match app.animation_step % 3 {
                     0 => "Reading...",
                     1 => "Writing...",
@@ -343,20 +311,17 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         }
     };
 
-    // Indicateur de mode démo
     let demo_indicator = if app.demo_mode { "[DEMO] " } else { "" };
 
-    // Indicateur de son
     let sound_indicator = match &app.audio {
         Some(audio) if audio.is_enabled() => " [♪ ON] ",
         Some(_) => " [♪ OFF]",
         None => " [S=Sound]",
     };
 
-    // Calculer le padding pour justifier à droite comme dans le PHP original
     let version_text = "| MS-DOS defrag ";
     let total_width = area.width as usize;
-    let action_len = action_text.len() + demo_indicator.len() + 2; // "  " prefix
+    let action_len = action_text.len() + demo_indicator.len() + 2; 
     let sound_len = sound_indicator.len();
     let version_len = version_text.len();
     let padding = total_width.saturating_sub(action_len + sound_len + version_len);
@@ -389,16 +354,16 @@ pub fn get_menu_items(menu_idx: usize) -> Vec<&'static str> {
             "Optimization method...",
             "",
             "Exit",
-        ], // Optimize
-        1 => vec!["Analyze drive", "File fragmentation..."], // Analyze
-        2 => vec!["Print disk map", "Save disk map..."],     // File
+        ],
+        1 => vec!["Analyze drive", "File fragmentation..."],
+        2 => vec!["Print disk map", "Save disk map..."],
         3 => vec![
             "Sort by name",
             "Sort by extension",
             "Sort by date",
             "Sort by size",
-        ], // Sort
-        4 => vec!["Contents", "About MS-DOS Defrag..."],     // Help
+        ],
+        4 => vec!["Contents", "About MS-DOS Defrag..."],
         _ => vec![],
     }
 }
@@ -414,7 +379,6 @@ fn render_about_box(app: &App, frame: &mut Frame) {
 
     let area = frame.area();
 
-    // Dimensions de la boîte About
     let box_width = 52;
     let box_height = 18;
     let box_x = (area.width.saturating_sub(box_width)) / 2;
@@ -422,14 +386,12 @@ fn render_about_box(app: &App, frame: &mut Frame) {
 
     let about_area = Rect::new(box_x, box_y, box_width, box_height);
 
-    // Fond de la boîte avec ombre
     let shadow_area = Rect::new(box_x + 2, box_y + 1, box_width, box_height);
     frame.render_widget(
         Block::new().style(Style::new().bg(Color::Black)),
         shadow_area,
     );
 
-    // Boîte principale avec double bordure
     let about_block = Block::new()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
@@ -441,7 +403,6 @@ fn render_about_box(app: &App, frame: &mut Frame) {
 
     let inner = about_block.inner(about_area);
 
-    // Contenu ASCII art et informations
     let about_text = vec![
         Line::from(""),
         Line::from(vec![Span::styled(
@@ -494,7 +455,6 @@ fn render_about_box(app: &App, frame: &mut Frame) {
     let about_paragraph = Paragraph::new(about_text).style(Style::new().bg(Color::Gray));
     frame.render_widget(about_paragraph, inner);
 
-    // Bouton OK centré en bas
     let button_width = 10;
     let button_x = inner.x + (inner.width.saturating_sub(button_width)) / 2;
     let button_y = inner.y + inner.height - 2;
@@ -529,29 +489,21 @@ impl Widget for DiskGridWidget<'_> {
                 if col >= area.width {
                     break;
                 }
-                // Couleurs fidèles au defrag MS-DOS original
                 let (symbol, style) = match cluster {
-                    // Bloc défragmenté/optimisé (vert clair avec point)
                     ClusterState::Used => (
                         "•",
                         Style::new()
                             .fg(Color::Rgb(0, 200, 0))
                             .bg(Color::Rgb(0, 100, 0)),
                     ),
-                    // Espace libre (gris sur bleu)
                     ClusterState::Unused => ("░", Style::new().fg(Color::Gray).bg(Color::Blue)),
-                    // Bloc fragmenté à défragmenter (blanc/gris clair)
                     ClusterState::Pending => ("•", Style::new().fg(Color::Black).bg(Color::White)),
-                    // Bloc défectueux (rouge sur noir)
                     ClusterState::Bad => ("B", Style::new().fg(Color::Red).bg(Color::Black)),
-                    // Bloc système non déplaçable
                     ClusterState::Unmovable => ("X", Style::new().fg(Color::White).bg(Color::Blue)),
-                    // Bloc en lecture (r minuscule, jaune sur bleu foncé)
                     ClusterState::Reading => (
                         "r",
                         Style::new().fg(Color::Yellow).bg(Color::Rgb(0, 0, 139)),
                     ),
-                    // Bloc en écriture (W majuscule, vert sur bleu foncé)
                     ClusterState::Writing => {
                         ("W", Style::new().fg(Color::Green).bg(Color::Rgb(0, 0, 139)))
                     }
