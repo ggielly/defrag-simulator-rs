@@ -776,16 +776,8 @@ impl App {
                                         }
                                     }
 
-                                    *progress += clusters_per_operation;
-
-                                    // Check if this file is completely written
-                                    if *progress >= 5 { // Assuming average file size of 5 clusters
-                                        self.current_file_read_progress = Some(FileDefragPhase::Completed);
-                                    } else {
-                                        self.current_file_read_progress = Some(FileDefragPhase::Reading {
-                                            progress: *progress
-                                        });
-                                    }
+                                    // The file operation is now complete for this cluster
+                                    self.current_file_read_progress = Some(FileDefragPhase::Completed);
                                 }
                             }
                         }
