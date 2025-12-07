@@ -449,12 +449,31 @@ impl Win98GraphicalRenderer {
         let progress = if app.stats.total_to_defrag > 0 {
             (app.stats.clusters_defragged as f64 / app.stats.total_to_defrag as f64 * 100.0) as u32
         } else {
-            0
+            if app.phase == DefragPhase::Finished { 100 } else { 0 }
         };
         
-        let text = format!("{}% completed", progress);
         let y = self.progress_bar.area.y - 18;
-        let _ = self.backend.draw_text(&text, self.progress_bar.area.x, y, 13, colors::TEXT);
+
+        // Status text on the left
+        let status_text = if let Some(filename) = &app.current_filename {
+            let max_len = 45;
+            let display_name = if filename.len() > max_len { &filename[..max_len] } else { filename };
+            format!("Defragmenting: {}", display_name)
+        } else {
+            match app.phase {
+                DefragPhase::Analyzing => "Analyzing drive...".to_string(),
+                DefragPhase::Finished => "Defragmentation is 100% complete.".to_string(),
+                _ => "".to_string(),
+            }
+        };
+        let _ = self.backend.draw_text(&status_text, self.progress_bar.area.x, y, 13, colors::TEXT);
+        
+        // Percentage text on the right
+        let percent_text = format!("{}% complete", progress);
+        if let Ok(text_width) = self.backend.get_text_width(&percent_text, 13) {
+            let x_right = self.progress_bar.area.x + self.progress_bar.area.width as i32 - text_width as i32;
+            let _ = self.backend.draw_text(&percent_text, x_right, y, 13, colors::TEXT);
+        }
     }
     
     /// Draw button text

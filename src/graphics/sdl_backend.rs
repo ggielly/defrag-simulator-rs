@@ -309,6 +309,26 @@ impl SdlBackend {
         Ok((tw, th))
     }
     
+    /// Get the width of a string of text for a given size
+    pub fn get_text_width(&self, text: &str, size: u16) -> Result<u32, String> {
+        if text.is_empty() {
+            return Ok(0);
+        }
+        
+        let font = self.ttf_context
+            .load_font_from_rwops(
+                sdl2::rwops::RWops::from_bytes(super::fonts::FONT_DATA)
+                    .map_err(|e| format!("Failed to create RWops: {}", e))?,
+                size,
+            )
+            .map_err(|e| format!("Failed to load font: {}", e))?;
+        
+        let (text_width, _) = font.size_of(text)
+            .map_err(|e| format!("Failed to measure text: {}", e))?;
+            
+        Ok(text_width)
+    }
+    
     /// Check if still running
     pub fn is_running(&self) -> bool {
         self.running

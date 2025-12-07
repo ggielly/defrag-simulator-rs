@@ -4,4 +4,6 @@ pub mod ui;
 pub mod models;
 pub mod constants;
 pub mod win98;
+#[cfg(feature = "graphical")]
+pub mod graphics;
 pub mod dos_files;

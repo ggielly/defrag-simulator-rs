@@ -239,7 +239,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         Span::styled("•", Style::new().fg(Color::Rgb(0, 200, 0))),
         Span::raw(" - Optimized    "),
         Span::styled("•", Style::new().white()),
-        Span::raw(" - Fragmented    │"),
+        Span::raw(" - Fragmented        │"),
     ];
     frame.render_widget(
         Paragraph::new(Line::from(line2_spans)).style(Style::new().on_blue()),
@@ -254,7 +254,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         Span::styled("r", Style::new().fg(Color::Yellow).bg(Color::Blue)),
         Span::raw(" - Reading      "),
         Span::styled("W", Style::new().fg(Color::Green).bg(Color::Blue)),
-        Span::raw(" - Writing         │"),
+        Span::raw(" - Writing           │"),
     ];
     frame.render_widget(
         Paragraph::new(Line::from(line3_spans)).style(Style::new().on_blue()),
@@ -284,9 +284,9 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         Span::raw(format!("│ {:^38} │", time_display)),
         Span::raw("│ "),
         Span::styled("B", Style::new().fg(Color::Red).bg(Color::Black)),
-        Span::raw(" - Bad Block    "),
+        Span::raw(" - Bad block    "),
         Span::styled("X", Style::new().fg(Color::White).bg(Color::Blue)),
-        Span::raw(" - Unmovable       │"),
+        Span::raw(" - Unmovable         │"),
     ];
     frame.render_widget(
         Paragraph::new(Line::from(line4_spans)).style(Style::new().on_blue()),
@@ -294,8 +294,22 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     );
 
     // Line 5: Status (Text) + Legend (Drive Info)
-    let line5 =
-        "│            Full Optimization           ││ Drive C: ░ = Unused Space             │";
+    let status_text = if let Some(filename) = &app.current_filename {
+        // Truncate filename to fit, keeping it centered
+        let max_len = 38;
+        let display_name = if filename.len() > max_len {
+            &filename[..max_len]
+        } else {
+            filename
+        };
+        format!("File: {}", display_name)
+    } else {
+        "Full optimization".to_string()
+    };
+    
+    let line5_content = format!("{:^38}", status_text);
+    let line5 = format!("│{}  ││ Drive C: ░ = Unused space              │", line5_content);
+
     frame.render_widget(
         Paragraph::new(line5).style(Style::new().on_blue()),
         footer_layout[4],
@@ -372,7 +386,7 @@ pub fn get_menu_items(menu_idx: usize) -> Vec<&'static str> {
         0 => vec![
             "Begin optimization",
             "Drive...",
-            "Optimization Method...",
+            "Optimization method...",
             "",
             "Exit",
         ], // Optimize
@@ -468,7 +482,7 @@ fn render_about_box(app: &App, frame: &mut Frame) {
             Span::styled("GPL-v3", Style::new().fg(Color::Black)),
         ]),
         Line::from(vec![
-            Span::styled("  GitHub: ", Style::new().fg(Color::DarkGray)),
+            Span::styled("  Github: ", Style::new().fg(Color::DarkGray)),
             Span::styled(
                 "github.com/ggielly/defrag-rs",
                 Style::new().fg(Color::Blue).underlined(),

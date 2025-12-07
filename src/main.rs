@@ -1,15 +1,6 @@
 use std::io::Result;
 use clap::Parser;
-
-mod audio;
-mod app;
-mod ui;
-mod models;
-pub mod constants;
-pub mod win98;
-
-#[cfg(feature = "graphical")]
-pub mod graphics;
+use defrag_rs::{app, ui};
 
 // -- Main Application Logic ---------------------------------------------------
 
@@ -21,7 +12,7 @@ fn main() -> Result<()> {
     // Check if we should use graphical mode for Win98/Win95
     #[cfg(feature = "graphical")]
     {
-        use crate::constants::defrag_type::DefragStyle;
+        use defrag_rs::{constants::defrag_type::DefragStyle, graphics};
         
         if matches!(ui_style, DefragStyle::Windows98 | DefragStyle::Windows95) {
             // Run graphical mode

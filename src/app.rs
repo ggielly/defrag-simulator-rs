@@ -1,17 +1,25 @@
+use crate::audio::AudioEngine;
+use crate::constants::{
+    animation, audio as audio_const, defrag_type::DefragStyle, disk, ui as ui_const,
+};
+use crate::dos_files::DosFileProvider;
+
+use crate::models::{ClusterState, DefragPhase, DefragStats};
+use rand::prelude::{Rng, SliceRandom};
 use std::{
     io::Result,
     sync::mpsc,
     time::{Duration, Instant},
 };
-use crate::models::{ClusterState, DefragPhase, DefragStats};
-use crate::audio::AudioEngine;
-use crate::constants::{disk, audio as audio_const, animation, ui as ui_const, defrag_type::DefragStyle};
-use rand::prelude::{SliceRandom, Rng};
 
-// -- CLI Arguments ------------------------------------------------------------
+// -- CLI arguments ------------------------------------------------------------
 
 #[derive(clap::Parser)]
-#[command(name = "defrag", version = "0.1.0", about = "MS-DOS Defragmenter Simulation")]
+#[command(
+    name = "defrag",
+    version = "0.1.0",
+    about = "MS-DOS Defragmenter Simulation"
+)]
 pub struct Args {
     /// Animation speed: fast, normal, or slow
     #[arg(long, default_value = "normal")]
@@ -28,11 +36,11 @@ pub struct Args {
     /// Enable HDD sounds
     #[arg(long, short = 's', default_value_t = false)]
     pub sound: bool,
-    
+
     /// Select disk drive (C, D, E, or F)
     #[arg(long, short = 'd', default_value = "C")]
     pub drive: char,
-    
+
     /// UI style: msdos, win95, or win98
     #[arg(long, short = 'u', default_value = "msdos")]
     pub ui: String,
@@ -49,7 +57,7 @@ impl Args {
     }
 }
 
-// -- Disk Drive Types ----------------------------------------------------------
+// -- Disk drive types ----------------------------------------------------------
 
 /// Represents different types of disk drives with different IOPS (Input/Output Operations Per Second)
 /// Based on real historical performance characteristics of different disk types
@@ -74,17 +82,17 @@ impl DiskDrive {
             name: name.to_string(),
         }
     }
-    
+
     /// Gets the IOPS value for this drive
     pub fn iops(&self) -> u32 {
         self.config.iops
     }
-    
+
     /// Gets the drive letter
     pub fn letter(&self) -> char {
         self.config.letter
     }
-    
+
     /// Gets the calculated playback rate for audio based on IOPS
     pub fn audio_playback_rate(&self) -> f32 {
         audio_const::calculate_playback_rate(self.config.iops)
@@ -128,7 +136,7 @@ impl DiskDriveCollection {
     }
 }
 
-// -- File Simulation --------------------------------------------------------
+// -- File simulation --------------------------------------------------------
 
 /// Represents a logical file with multiple clusters
 /// This allows simulating files of different sizes during defragmentation
@@ -147,9 +155,13 @@ impl FileFragment {
     pub fn new(clusters: Vec<usize>) -> Self {
         let size = clusters.len();
         let is_fragmented = Self::check_fragmentation(&clusters);
-        Self { clusters, size, is_fragmented }
+        Self {
+            clusters,
+            size,
+            is_fragmented,
+        }
     }
-    
+
     /// Check if clusters are contiguous (not fragmented)
     fn check_fragmentation(clusters: &[usize]) -> bool {
         if clusters.len() <= 1 {
@@ -162,12 +174,12 @@ impl FileFragment {
         }
         false
     }
-    
+
     /// Get the first cluster of this file
     pub fn first_cluster(&self) -> Option<usize> {
         self.clusters.first().copied()
     }
-    
+
     /// Get the last cluster of this file
     pub fn last_cluster(&self) -> Option<usize> {
         self.clusters.last().copied()
@@ -185,7 +197,7 @@ pub enum FileDefragPhase {
     Completed,
 }
 
-// -- Application State --------------------------------------------------------
+// -- Application state --------------------------------------------------------
 
 /// Cache for tracking free space regions (optimization)
 #[derive(Debug, Clone)]
@@ -203,18 +215,18 @@ impl FreeSpaceCache {
             dirty: true,
         }
     }
-    
+
     /// Mark cache as needing rebuild
     pub fn invalidate(&mut self) {
         self.dirty = true;
     }
-    
+
     /// Rebuild the cache from cluster state
     pub fn rebuild(&mut self, clusters: &[ClusterState]) {
         self.regions.clear();
         let mut start: Option<usize> = None;
         let mut length = 0;
-        
+
         for (i, &cluster) in clusters.iter().enumerate() {
             if cluster == ClusterState::Unused {
                 if start.is_none() {
@@ -227,20 +239,21 @@ impl FreeSpaceCache {
                 length = 0;
             }
         }
-        
+
         // Don't forget the last region
         if let Some(s) = start {
             self.regions.push((s, length));
         }
-        
+
         // Sort by size (largest first) for better allocation
         self.regions.sort_by(|a, b| b.1.cmp(&a.1));
         self.dirty = false;
     }
-    
+
     /// Find a region with at least `size` contiguous clusters
     pub fn find_region(&self, size: usize) -> Option<usize> {
-        self.regions.iter()
+        self.regions
+            .iter()
             .find(|(_, len)| *len >= size)
             .map(|(start, _)| *start)
     }
@@ -248,7 +261,7 @@ impl FreeSpaceCache {
 
 pub struct App {
     pub running: bool,
-    pub paused: bool,  // NEW: Pause state
+    pub paused: bool, // NEW: Pause state
     pub tick_rate: Duration,
     pub width: usize,
     pub height: usize,
@@ -261,6 +274,8 @@ pub struct App {
     pub write_pos: Option<usize>,
     // File defragmentation state
     pub current_file_read_progress: Option<FileDefragPhase>,
+    pub current_filename: Option<String>,
+    file_provider: DosFileProvider,
     // Menu state
     pub menu_open: bool,
     pub selected_menu: usize,
@@ -284,7 +299,14 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(width: usize, height: usize, fill_percent: f32, enable_sound: bool, drive_letter: char, ui_style: DefragStyle) -> Self {
+    pub fn new(
+        width: usize,
+        height: usize,
+        fill_percent: f32,
+        enable_sound: bool,
+        drive_letter: char,
+        ui_style: DefragStyle,
+    ) -> Self {
         let total_clusters = width * height;
         let mut rng = rand::thread_rng();
 
@@ -327,7 +349,11 @@ impl App {
             clusters[0] = ClusterState::Unmovable;
         }
 
-        let total_to_defrag = clusters.iter().filter(|&&c| c == ClusterState::Pending).count() + 2; // +2 pour Reading/Writing initiaux
+        let total_to_defrag = clusters
+            .iter()
+            .filter(|&&c| c == ClusterState::Pending)
+            .count()
+            + 2; // +2 pour Reading/Writing initiaux
 
         // Initialize the drive collection and select the requested drive
         let drive_collection = DiskDriveCollection::new();
@@ -353,6 +379,8 @@ impl App {
             read_pos: None,
             write_pos: None,
             current_file_read_progress: None,
+            current_filename: None,
+            file_provider: DosFileProvider::new(),
             // Menu state
             menu_open: false,
             selected_menu: 0,
@@ -381,7 +409,7 @@ impl App {
             pending_cache_dirty: true,
         }
     }
-    
+
     /// Toggle pause state
     pub fn toggle_pause(&mut self) {
         if self.phase == DefragPhase::Defragmenting || self.phase == DefragPhase::Analyzing {
@@ -394,22 +422,22 @@ impl App {
             }
         }
     }
-    
+
     /// Toggle demo mode (auto-restart)
     pub fn toggle_demo_mode(&mut self) {
         self.demo_mode = !self.demo_mode;
     }
-    
+
     /// Restart defragmentation from the beginning
     pub fn restart(&mut self) {
         let mut rng = rand::thread_rng();
         let total_clusters = self.width * self.height;
         let fill_percent = ui_const::DEFAULT_FILL_PERCENT;
-        
+
         // Recréer les clusters
         let num_pending = (total_clusters as f32 * fill_percent) as usize;
         let num_bad = (total_clusters as f32 * ui_const::BAD_BLOCK_PERCENT) as usize;
-        
+
         self.clusters.clear();
         for _ in 0..(num_pending.saturating_sub(2)) {
             self.clusters.push(ClusterState::Pending);
@@ -420,61 +448,71 @@ impl App {
             self.clusters.push(ClusterState::Unused);
         }
         self.clusters.shuffle(&mut rng);
-        
+
         let mut bad_positions: Vec<usize> = (0..self.clusters.len()).collect();
         bad_positions.shuffle(&mut rng);
         for &pos in bad_positions.iter().take(num_bad) {
-            self.clusters.insert(pos.min(self.clusters.len()), ClusterState::Bad);
+            self.clusters
+                .insert(pos.min(self.clusters.len()), ClusterState::Bad);
         }
         self.clusters.truncate(total_clusters);
         if !self.clusters.is_empty() {
             self.clusters[0] = ClusterState::Unmovable;
         }
-        
+
         // Reset stats
-        let total_to_defrag = self.clusters.iter().filter(|&&c| c == ClusterState::Pending).count() + 2;
+        let total_to_defrag = self
+            .clusters
+            .iter()
+            .filter(|&&c| c == ClusterState::Pending)
+            .count()
+            + 2;
         self.stats = DefragStats {
             total_to_defrag,
             clusters_defragged: 0,
             start_time: Instant::now(),
         };
-        
+
         // Reset state
         self.phase = DefragPhase::Initializing;
         self.animation_step = 0;
         self.read_pos = None;
         self.write_pos = None;
         self.current_file_read_progress = None;
+        self.current_filename = None;
         self.paused = false;
-        
+
         // Invalidate caches
         self.free_space_cache.invalidate();
         self.pending_cache_dirty = true;
     }
-    
+
     /// Calculate estimated time remaining
     pub fn estimated_time_remaining(&self) -> Option<Duration> {
         if self.stats.clusters_defragged == 0 || self.phase != DefragPhase::Defragmenting {
             return None;
         }
-        
+
         let elapsed = self.stats.start_time.elapsed();
-        let remaining = self.stats.total_to_defrag.saturating_sub(self.stats.clusters_defragged);
-        
+        let remaining = self
+            .stats
+            .total_to_defrag
+            .saturating_sub(self.stats.clusters_defragged);
+
         if remaining == 0 {
             return Some(Duration::ZERO);
         }
-        
+
         // Calculate rate (clusters per second)
         let rate = self.stats.clusters_defragged as f64 / elapsed.as_secs_f64();
         if rate <= 0.0 {
             return None;
         }
-        
+
         let remaining_secs = remaining as f64 / rate;
         Some(Duration::from_secs_f64(remaining_secs))
     }
-    
+
     /// Get progress percentage
     pub fn progress_percent(&self) -> f32 {
         if self.stats.total_to_defrag == 0 {
@@ -484,9 +522,7 @@ impl App {
     }
 
     pub fn run(&mut self, term: &mut crate::ui::TuiWrapper, rx: mpsc::Receiver<()>) -> Result<()> {
-        use crossterm::{
-            event::{self, Event, KeyCode, KeyEventKind},
-        };
+        use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 
         let mut last_tick = Instant::now();
         while self.running {
@@ -549,7 +585,11 @@ impl App {
                             }
                             KeyCode::Left => {
                                 if self.menu_open {
-                                    self.selected_menu = if self.selected_menu == 0 { 4 } else { self.selected_menu - 1 };
+                                    self.selected_menu = if self.selected_menu == 0 {
+                                        4
+                                    } else {
+                                        self.selected_menu - 1
+                                    };
                                     self.selected_item = 0;
                                 }
                             }
@@ -561,13 +601,19 @@ impl App {
                             }
                             KeyCode::Up => {
                                 if self.menu_open {
-                                    let max_items = crate::ui::get_menu_items(self.selected_menu).len();
-                                    self.selected_item = if self.selected_item == 0 { max_items.saturating_sub(1) } else { self.selected_item - 1 };
+                                    let max_items =
+                                        crate::ui::get_menu_items(self.selected_menu).len();
+                                    self.selected_item = if self.selected_item == 0 {
+                                        max_items.saturating_sub(1)
+                                    } else {
+                                        self.selected_item - 1
+                                    };
                                 }
                             }
                             KeyCode::Down => {
                                 if self.menu_open {
-                                    let max_items = crate::ui::get_menu_items(self.selected_menu).len();
+                                    let max_items =
+                                        crate::ui::get_menu_items(self.selected_menu).len();
                                     self.selected_item = (self.selected_item + 1) % max_items;
                                 }
                             }
@@ -616,7 +662,8 @@ impl App {
         match self.phase {
             DefragPhase::Initializing => {
                 // Wait for a bit before starting analysis
-                if self.animation_step > 20 { // 2 seconds
+                if self.animation_step > 20 {
+                    // 2 seconds
                     self.phase = DefragPhase::Analyzing;
                     self.animation_step = 0;
                 }
@@ -624,7 +671,7 @@ impl App {
             DefragPhase::Analyzing => {
                 // Simulate analysis by showing a sweeping "Reading" block
                 let total_clusters = self.width * self.height;
-                let scan_pos = (self.animation_step as usize * 5).min(total_clusters-1);
+                let scan_pos = (self.animation_step as usize * 5).min(total_clusters - 1);
                 self.read_pos = Some(scan_pos);
 
                 // Jouer un son de seek pendant l'analyse
@@ -646,7 +693,7 @@ impl App {
                 // Calculate the speed factor based on the drive's IOPS
                 // Higher IOPS means faster operations (lower delay between operations)
                 let speed_factor = 1.0 / (self.current_drive.iops() as f64).max(1.0);
-                
+
                 // Dynamically adjust tick rate based on drive speed
                 // Faster drives (higher IOPS) = shorter tick rate = faster animation
                 let base_tick_ms = animation::DEFAULT_TICK_RATE_MS as f64;
@@ -659,7 +706,8 @@ impl App {
                 // Check if we need to select a new file to defragment
                 if self.current_file_read_progress.is_none() {
                     // Chercher un bloc Pending (à défragmenter) - choix ALÉATOIRE comme dans PHP
-                    let pending_indices: Vec<usize> = self.clusters
+                    let pending_indices: Vec<usize> = self
+                        .clusters
                         .iter()
                         .enumerate()
                         .filter(|&(_, c)| *c == ClusterState::Pending)
@@ -667,6 +715,9 @@ impl App {
                         .collect();
 
                     if let Some(&pending_idx) = pending_indices.choose(&mut rng) {
+                        // NEW: Get a filename for this operation
+                        self.current_filename = self.file_provider.get_random_filename();
+
                         // Simulate file size - different files have different sizes
                         let file_size = 1 + (rng.gen::<usize>() % 5); // Files of 1-5 clusters
 
@@ -680,7 +731,9 @@ impl App {
                         }
 
                         // Trouver suffisamment de blocs contigus Unused pour écrire le fichier entier
-                        if let Some(unused_start_idx) = self.find_contiguous_unused_clusters(file_size) {
+                        if let Some(unused_start_idx) =
+                            self.find_contiguous_unused_clusters(file_size)
+                        {
                             // Mark the appropriate number of clusters as Writing in sequence
                             for i in 0..file_size.min(clusters_per_operation) {
                                 if unused_start_idx + i < self.clusters.len() {
@@ -692,16 +745,16 @@ impl App {
                             self.write_pos = Some(unused_start_idx);
 
                             // Initialize file defragmentation progress
-                            self.current_file_read_progress = Some(FileDefragPhase::Reading {
-                                progress: 0
-                            });
+                            self.current_file_read_progress =
+                                Some(FileDefragPhase::Reading { progress: 0 });
                         } else {
                             // No contiguous space found - just convert this pending block to Used directly
                             // This simulates "in-place" optimization when disk is too fragmented
                             self.clusters[pending_idx] = ClusterState::Used;
                             self.stats.clusters_defragged += 1;
                             self.read_pos = None;
-                            // Play write sound for the conversion
+                            self.current_filename = None; // No file operation, so no name
+                                                          // Play write sound for the conversion
                             if let Some(ref audio) = self.audio {
                                 audio.play_write();
                             }
@@ -711,6 +764,7 @@ impl App {
                         self.read_pos = None;
                         self.write_pos = None;
                         self.phase = DefragPhase::Finished;
+                        self.current_filename = None;
                     }
                 } else {
                     // Continue the defragmentation of the current file
@@ -747,9 +801,10 @@ impl App {
                                     }
 
                                     *progress += clusters_per_operation;
-                                    self.current_file_read_progress = Some(FileDefragPhase::Writing {
-                                        progress: *progress
-                                    });
+                                    self.current_file_read_progress =
+                                        Some(FileDefragPhase::Writing {
+                                            progress: *progress,
+                                        });
                                 }
                             }
                         }
@@ -766,8 +821,9 @@ impl App {
 
                                     // Mark more clusters as used if we're processing a large file
                                     for i in 1..clusters_per_operation {
-                                        if write_idx + i < self.clusters.len() &&
-                                           self.clusters[write_idx + i] == ClusterState::Writing {
+                                        if write_idx + i < self.clusters.len()
+                                            && self.clusters[write_idx + i] == ClusterState::Writing
+                                        {
                                             self.clusters[write_idx + i] = ClusterState::Used;
                                             self.stats.clusters_defragged += 1;
                                             if let Some(ref audio) = self.audio {
@@ -777,13 +833,15 @@ impl App {
                                     }
 
                                     // The file operation is now complete for this cluster
-                                    self.current_file_read_progress = Some(FileDefragPhase::Completed);
+                                    self.current_file_read_progress =
+                                        Some(FileDefragPhase::Completed);
                                 }
                             }
                         }
                         Some(FileDefragPhase::Completed) => {
                             // Reset for the next file
                             self.current_file_read_progress = None;
+                            self.current_filename = None;
                         }
                         None => {} // Shouldn't happen in this branch
                     }
@@ -854,20 +912,21 @@ impl App {
                 start_pos = None;
             }
         }
-        
+
         None
     }
-    
+
     /// Invalidate caches when clusters change
     fn invalidate_caches(&mut self) {
         self.free_space_cache.invalidate();
         self.pending_cache_dirty = true;
     }
-    
+
     /// Get cached pending indices (optimization for random selection)
     fn get_pending_indices(&mut self) -> &[usize] {
         if self.pending_cache_dirty {
-            self.pending_indices_cache = self.clusters
+            self.pending_indices_cache = self
+                .clusters
                 .iter()
                 .enumerate()
                 .filter(|&(_, c)| *c == ClusterState::Pending)
@@ -879,7 +938,11 @@ impl App {
     }
 
     /// Find the next cluster of a given state after a specific position
-    pub fn find_next_cluster_in_file(&self, start_pos: usize, state: ClusterState) -> Option<usize> {
+    pub fn find_next_cluster_in_file(
+        &self,
+        start_pos: usize,
+        state: ClusterState,
+    ) -> Option<usize> {
         for i in (start_pos + 1)..self.clusters.len() {
             if self.clusters[i] == state {
                 return Some(i);
@@ -887,12 +950,12 @@ impl App {
         }
         None
     }
-    
+
     /// Count clusters of a specific state
     pub fn count_clusters(&self, state: ClusterState) -> usize {
         self.clusters.iter().filter(|&&c| c == state).count()
     }
-    
+
     /// Get fragmentation percentage (0.0 to 1.0)
     pub fn fragmentation_percent(&self) -> f32 {
         let pending = self.count_clusters(ClusterState::Pending);
@@ -902,7 +965,7 @@ impl App {
         }
         pending as f32 / total_data as f32
     }
-    
+
     /// Get status text for display
     pub fn status_text(&self) -> &'static str {
         if self.paused {
@@ -911,12 +974,10 @@ impl App {
         match self.phase {
             DefragPhase::Initializing => "Initializing...",
             DefragPhase::Analyzing => "Analyzing disk...",
-            DefragPhase::Defragmenting => {
-                match self.animation_step % 3 {
-                    0 => "Reading...",
-                    1 => "Writing...",
-                    _ => "Updating FAT...",
-                }
+            DefragPhase::Defragmenting => match self.animation_step % 3 {
+                0 => "Reading...",
+                1 => "Writing...",
+                _ => "Updating FAT...",
             },
             DefragPhase::Finished => "Complete",
         }
@@ -926,9 +987,16 @@ impl App {
 pub fn parse_size(size_str: &str) -> Result<(usize, usize)> {
     let parts: Vec<&str> = size_str.split('x').collect();
     if parts.len() != 2 {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Size must be in format WxH"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Size must be in format WxH",
+        ));
     }
-    let width: usize = parts[0].parse().map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid width"))?;
-    let height: usize = parts[1].parse().map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid height"))?;
+    let width: usize = parts[0]
+        .parse()
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid width"))?;
+    let height: usize = parts[1]
+        .parse()
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid height"))?;
     Ok((width, height))
 }
