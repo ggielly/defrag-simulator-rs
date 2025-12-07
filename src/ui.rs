@@ -1,12 +1,12 @@
-use ratatui::{
-    prelude::*,
-    widgets::{Block, Borders, BorderType, Paragraph, Widget},
-    layout::{Layout, Constraint, Direction, Alignment},
-    text::{Line, Span},
-    style::{Style, Color},
-};
 use crate::app::App;
 use crate::models::{ClusterState, DefragPhase};
+use ratatui::{
+    layout::{Alignment, Constraint, Direction, Layout},
+    prelude::*,
+    style::{Color, Style},
+    text::{Line, Span},
+    widgets::{Block, BorderType, Borders, Paragraph, Widget},
+};
 
 // -- UI Components ------------------------------------------------------------
 
@@ -20,7 +20,7 @@ impl TuiWrapper {
             terminal::{enable_raw_mode, EnterAlternateScreen},
             ExecutableCommand,
         };
-        
+
         std::io::stdout().execute(EnterAlternateScreen)?;
         enable_raw_mode()?;
         let backend = CrosstermBackend::new(std::io::stdout());
@@ -37,7 +37,7 @@ impl TuiWrapper {
             terminal::{disable_raw_mode, LeaveAlternateScreen},
             ExecutableCommand,
         };
-        
+
         self.terminal.backend_mut().execute(LeaveAlternateScreen)?;
         disable_raw_mode()?;
         Ok(())
@@ -97,18 +97,18 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
             // Menu sélectionné - inversé
             spans.push(Span::styled(
                 format!(" {} ", name),
-                Style::new().black().on_cyan()
+                Style::new().black().on_cyan(),
             ));
         } else {
             // Menu normal avec première lettre en rouge
             spans.push(Span::raw(" "));
             spans.push(Span::styled(
                 first_char.to_string(),
-                Style::new().red().on_white()
+                Style::new().red().on_white(),
             ));
             spans.push(Span::styled(
                 rest.to_string(),
-                Style::new().black().on_white()
+                Style::new().black().on_white(),
             ));
         }
         spans.push(Span::styled("  ", Style::new().black().on_white()));
@@ -117,7 +117,10 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     // Remplir le reste avec des espaces et ajouter F1=Help
     let current_len: usize = spans.iter().map(|s| s.content.len()).sum();
     let padding = area.width as usize - current_len - 9;
-    spans.push(Span::styled(" ".repeat(padding), Style::new().black().on_white()));
+    spans.push(Span::styled(
+        " ".repeat(padding),
+        Style::new().black().on_white(),
+    ));
     spans.push(Span::styled("F1=Help  ", Style::new().black().on_white()));
 
     let header = Paragraph::new(Line::from(spans));
@@ -174,8 +177,12 @@ fn render_menu_dropdown(app: &App, frame: &mut Frame, area: Rect) {
             frame.render_widget(sep, item_area);
         } else if i == app.selected_item {
             // Item sélectionné
-            let selected = Paragraph::new(format!(" {:<width$}", item, width = inner.width as usize - 1))
-                .style(Style::new().fg(Color::White).bg(Color::Black));
+            let selected = Paragraph::new(format!(
+                " {:<width$}",
+                item,
+                width = inner.width as usize - 1
+            ))
+            .style(Style::new().fg(Color::White).bg(Color::Black));
             frame.render_widget(selected, item_area);
         } else {
             // Item normal
@@ -209,8 +216,12 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         .split(area);
 
     // Line 1: Top Border
-    let top_border = "┌──────────────── Status ────────────────┐┌──────────────── Legend ────────────────┐";
-    frame.render_widget(Paragraph::new(top_border).style(Style::new().on_blue()), footer_layout[0]);
+    let top_border =
+        "┌──────────────── Status ────────────────┐┌──────────────── Legend ────────────────┐";
+    frame.render_widget(
+        Paragraph::new(top_border).style(Style::new().on_blue()),
+        footer_layout[0],
+    );
 
     // Line 2: Status (Cluster, Percent) + Legend (Passed/Used, Pending)
     let percent = if app.stats.total_to_defrag == 0 {
@@ -219,14 +230,21 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         (app.stats.clusters_defragged as f32 / app.stats.total_to_defrag as f32) * 100.0
     };
     let line2_spans = vec![
-        Span::raw(format!("│ Cluster {:<6}                    {:>3}% │", app.stats.clusters_defragged, percent.min(100.0) as u8)),
+        Span::raw(format!(
+            "│ Cluster {:<6}                    {:>3}% │",
+            app.stats.clusters_defragged,
+            percent.min(100.0) as u8
+        )),
         Span::raw("│ "),
         Span::styled("•", Style::new().fg(Color::Rgb(0, 200, 0))),
         Span::raw(" - Optimized    "),
         Span::styled("•", Style::new().white()),
         Span::raw(" - Fragmented    │"),
     ];
-    frame.render_widget(Paragraph::new(Line::from(line2_spans)).style(Style::new().on_blue()), footer_layout[1]);
+    frame.render_widget(
+        Paragraph::new(Line::from(line2_spans)).style(Style::new().on_blue()),
+        footer_layout[1],
+    );
 
     // Line 3: Status (Progress Bar) + Legend (Reading, Writing)
     let progress_bar = create_progress_bar(percent);
@@ -238,7 +256,10 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         Span::styled("W", Style::new().fg(Color::Green).bg(Color::Blue)),
         Span::raw(" - Writing         │"),
     ];
-    frame.render_widget(Paragraph::new(Line::from(line3_spans)).style(Style::new().on_blue()), footer_layout[2]);
+    frame.render_widget(
+        Paragraph::new(Line::from(line3_spans)).style(Style::new().on_blue()),
+        footer_layout[2],
+    );
 
     // Line 4: Status (Elapsed time + estimated) + Legend (Bad, Unmovable)
     let elapsed = app.stats.start_time.elapsed();
@@ -267,26 +288,26 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         Span::styled("X", Style::new().fg(Color::White).bg(Color::Blue)),
         Span::raw(" - Unmovable       │"),
     ];
-    frame.render_widget(Paragraph::new(Line::from(line4_spans)).style(Style::new().on_blue()), footer_layout[3]);
+    frame.render_widget(
+        Paragraph::new(Line::from(line4_spans)).style(Style::new().on_blue()),
+        footer_layout[3],
+    );
 
     // Line 5: Status (Text) + Legend (Drive Info)
-    let status_text = app.current_filename.as_deref()
-        .filter(|_| app.phase == DefragPhase::Defragmenting)
-        .unwrap_or("Full Optimization");
-
-    let truncated_status = if status_text.len() > 36 {
-        &status_text[..36]
-    } else {
-        status_text
-    };
-    let line5_part1 = format!("│ {:^38} │", truncated_status);
-
-    let line5 = format!("{}│ Drive C: ░ = Unused Space             │", line5_part1);
-    frame.render_widget(Paragraph::new(line5).style(Style::new().on_blue()), footer_layout[4]);
+    let line5 =
+        "│            Full Optimization           ││ Drive C: ░ = Unused Space             │";
+    frame.render_widget(
+        Paragraph::new(line5).style(Style::new().on_blue()),
+        footer_layout[4],
+    );
 
     // Line 6: Bottom Border
-    let bottom_border = "└────────────────────────────────────────┘└────────────────────────────────────────┘";
-    frame.render_widget(Paragraph::new(bottom_border).style(Style::new().on_blue()), footer_layout[5]);
+    let bottom_border =
+        "└────────────────────────────────────────┘└────────────────────────────────────────┘";
+    frame.render_widget(
+        Paragraph::new(bottom_border).style(Style::new().on_blue()),
+        footer_layout[5],
+    );
 
     // --- Action Line ---
     // Messages d'action aléatoires comme dans l'implémentation PHP
@@ -303,7 +324,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
                     1 => "Writing...",
                     _ => "Updating FAT...",
                 }
-            },
+            }
             DefragPhase::Finished => "Complete",
         }
     };
@@ -333,7 +354,8 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         " ".repeat(padding),
         sound_indicator,
         version_text
-    )).style(Style::new().on_red().white().bold());
+    ))
+    .style(Style::new().on_red().white().bold());
     frame.render_widget(action_line, footer_layout[6]);
 }
 
@@ -347,11 +369,22 @@ fn create_progress_bar(percent: f32) -> String {
 
 pub fn get_menu_items(menu_idx: usize) -> Vec<&'static str> {
     match menu_idx {
-        0 => vec!["Begin optimization", "Drive...", "Optimization Method...", "", "Exit"],  // Optimize
-        1 => vec!["Analyze drive", "File fragmentation..."],  // Analyze
-        2 => vec!["Print disk map", "Save disk map..."],  // File
-        3 => vec!["Sort by name", "Sort by extension", "Sort by date", "Sort by size"],  // Sort
-        4 => vec!["Contents", "About MS-DOS Defrag..."],  // Help
+        0 => vec![
+            "Begin optimization",
+            "Drive...",
+            "Optimization Method...",
+            "",
+            "Exit",
+        ], // Optimize
+        1 => vec!["Analyze drive", "File fragmentation..."], // Analyze
+        2 => vec!["Print disk map", "Save disk map..."],     // File
+        3 => vec![
+            "Sort by name",
+            "Sort by extension",
+            "Sort by date",
+            "Sort by size",
+        ], // Sort
+        4 => vec!["Contents", "About MS-DOS Defrag..."],     // Help
         _ => vec![],
     }
 }
@@ -379,7 +412,7 @@ fn render_about_box(app: &App, frame: &mut Frame) {
     let shadow_area = Rect::new(box_x + 2, box_y + 1, box_width, box_height);
     frame.render_widget(
         Block::new().style(Style::new().bg(Color::Black)),
-        shadow_area
+        shadow_area,
     );
 
     // Boîte principale avec double bordure
@@ -397,29 +430,38 @@ fn render_about_box(app: &App, frame: &mut Frame) {
     // Contenu ASCII art et informations
     let about_text = vec![
         Line::from(""),
-        Line::from(vec![
-            Span::styled(r"   ____  _____ _____ ____      _    ____", Style::new().fg(Color::Blue).bold()),
-        ]),
-        Line::from(vec![
-            Span::styled(r"  |  _ \| ____|  ___|  _ \    / \  / ___|", Style::new().fg(Color::Blue).bold()),
-        ]),
-        Line::from(vec![
-            Span::styled(r"  | | | |  _| | |_  | |_) |  / _ \| |  _", Style::new().fg(Color::Blue).bold()),
-        ]),
-        Line::from(vec![
-            Span::styled(r"  | |_| | |___|  _| |  _ <  / ___ \ |_| |", Style::new().fg(Color::Cyan).bold()),
-        ]),
-        Line::from(vec![
-            Span::styled(r"  |____/|_____|_|   |_| \_\/_/   \_\____|", Style::new().fg(Color::Cyan).bold()),
-        ]),
+        Line::from(vec![Span::styled(
+            r"   ____  _____ _____ ____      _    ____",
+            Style::new().fg(Color::Blue).bold(),
+        )]),
+        Line::from(vec![Span::styled(
+            r"  |  _ \| ____|  ___|  _ \    / \  / ___|",
+            Style::new().fg(Color::Blue).bold(),
+        )]),
+        Line::from(vec![Span::styled(
+            r"  | | | |  _| | |_  | |_) |  / _ \| |  _",
+            Style::new().fg(Color::Blue).bold(),
+        )]),
+        Line::from(vec![Span::styled(
+            r"  | |_| | |___|  _| |  _ <  / ___ \ |_| |",
+            Style::new().fg(Color::Cyan).bold(),
+        )]),
+        Line::from(vec![Span::styled(
+            r"  |____/|_____|_|   |_| \_\/_/   \_\____|",
+            Style::new().fg(Color::Cyan).bold(),
+        )]),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("  MS-DOS Defrag Simulator v0.1.0", Style::new().fg(Color::Black).bold()),
-        ]),
+        Line::from(vec![Span::styled(
+            "  MS-DOS Defrag Simulator v0.1.0",
+            Style::new().fg(Color::Black).bold(),
+        )]),
         Line::from(""),
         Line::from(vec![
             Span::styled("  Author: ", Style::new().fg(Color::DarkGray)),
-            Span::styled("Guillaume 'GuY' Gielly", Style::new().fg(Color::Black).bold()),
+            Span::styled(
+                "Guillaume 'GuY' Gielly",
+                Style::new().fg(Color::Black).bold(),
+            ),
         ]),
         Line::from(vec![
             Span::styled("  License: ", Style::new().fg(Color::DarkGray)),
@@ -427,13 +469,15 @@ fn render_about_box(app: &App, frame: &mut Frame) {
         ]),
         Line::from(vec![
             Span::styled("  GitHub: ", Style::new().fg(Color::DarkGray)),
-            Span::styled("github.com/ggielly/defrag-rs", Style::new().fg(Color::Blue).underlined()),
+            Span::styled(
+                "github.com/ggielly/defrag-rs",
+                Style::new().fg(Color::Blue).underlined(),
+            ),
         ]),
         Line::from(""),
     ];
 
-    let about_paragraph = Paragraph::new(about_text)
-        .style(Style::new().bg(Color::Gray));
+    let about_paragraph = Paragraph::new(about_text).style(Style::new().bg(Color::Gray));
     frame.render_widget(about_paragraph, inner);
 
     // Bouton OK centré en bas
@@ -474,7 +518,12 @@ impl Widget for DiskGridWidget<'_> {
                 // Couleurs fidèles au defrag MS-DOS original
                 let (symbol, style) = match cluster {
                     // Bloc défragmenté/optimisé (vert clair avec point)
-                    ClusterState::Used => ("•", Style::new().fg(Color::Rgb(0, 200, 0)).bg(Color::Rgb(0, 100, 0))),
+                    ClusterState::Used => (
+                        "•",
+                        Style::new()
+                            .fg(Color::Rgb(0, 200, 0))
+                            .bg(Color::Rgb(0, 100, 0)),
+                    ),
                     // Espace libre (gris sur bleu)
                     ClusterState::Unused => ("░", Style::new().fg(Color::Gray).bg(Color::Blue)),
                     // Bloc fragmenté à défragmenter (blanc/gris clair)
@@ -484,13 +533,17 @@ impl Widget for DiskGridWidget<'_> {
                     // Bloc système non déplaçable
                     ClusterState::Unmovable => ("X", Style::new().fg(Color::White).bg(Color::Blue)),
                     // Bloc en lecture (r minuscule, jaune sur bleu foncé)
-                    ClusterState::Reading => ("r", Style::new().fg(Color::Yellow).bg(Color::Rgb(0, 0, 139))),
+                    ClusterState::Reading => (
+                        "r",
+                        Style::new().fg(Color::Yellow).bg(Color::Rgb(0, 0, 139)),
+                    ),
                     // Bloc en écriture (W majuscule, vert sur bleu foncé)
-                    ClusterState::Writing => ("W", Style::new().fg(Color::Green).bg(Color::Rgb(0, 0, 139))),
+                    ClusterState::Writing => {
+                        ("W", Style::new().fg(Color::Green).bg(Color::Rgb(0, 0, 139)))
+                    }
                 };
                 if let Some(cell) = buf.cell_mut((area.x + col, area.y + row)) {
-                    cell.set_symbol(symbol)
-                        .set_style(style);
+                    cell.set_symbol(symbol).set_style(style);
                 }
             }
         }
