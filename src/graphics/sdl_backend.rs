@@ -8,6 +8,8 @@ use sdl2::rect::Rect;
 use sdl2::render::{Canvas, TextureCreator};
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{Window, WindowContext};
+#[cfg(feature = "graphical")]
+use image;
 
 /// Windows 98 color palette (from CSS)
 pub mod colors {
@@ -74,27 +76,27 @@ impl SdlBackend {
         let sdl_context = sdl2::init()?;
         let video_subsystem = sdl_context.video()?;
         let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
-        
+
         let window = video_subsystem
             .window(&config.title, config.width * config.scale, config.height * config.scale)
             .position_centered()
             .resizable()
             .build()
             .map_err(|e| e.to_string())?;
-        
+
         let mut canvas = window.into_canvas()
             .accelerated()
             .present_vsync()
             .build()
             .map_err(|e| e.to_string())?;
-        
+
         // Set logical size for pixel-perfect scaling
         canvas.set_logical_size(config.width, config.height)
             .map_err(|e| e.to_string())?;
-        
+
         let texture_creator = canvas.texture_creator();
         let event_pump = sdl_context.event_pump()?;
-        
+
         Ok(Self {
             sdl_context,
             video_subsystem,
@@ -333,10 +335,49 @@ impl SdlBackend {
     pub fn is_running(&self) -> bool {
         self.running
     }
-    
+
     /// Get window dimensions
     pub fn get_size(&self) -> (u32, u32) {
         (self.config.width, self.config.height)
+    }
+
+    /// Load an image from a file path using the image crate
+    #[cfg(feature = "graphical")]
+    pub fn load_image_from_path(&self, path: &str) -> Result<image::RgbaImage, String> {
+        image::open(path)
+            .map(|img| img.to_rgba8())
+            .map_err(|e| format!("Failed to load image from path {}: {}", path, e))
+    }
+
+    /// Load an image from a byte array using the image crate
+    #[cfg(feature = "graphical")]
+    pub fn load_image_from_bytes(&self, data: &[u8]) -> Result<image::RgbaImage, String> {
+        image::load_from_memory(data)
+            .map(|img| img.to_rgba8())
+            .map_err(|e| format!("Failed to load image from bytes: {}", e))
+    }
+
+    /// Create an SDL2 texture from an image::RgbaImage and render it
+    #[cfg(feature = "graphical")]
+    pub fn with_texture_from_image<F>(&self, img: &image::RgbaImage, render_fn: F) -> Result<(), String>
+    where
+        F: FnOnce(&sdl2::render::Texture) -> Result<(), String>
+    {
+        let (width, height) = img.dimensions();
+        let mut texture = self.texture_creator
+            .create_texture_target(sdl2::pixels::PixelFormatEnum::RGBA8888, width, height)
+            .map_err(|e| format!("Failed to create texture: {}", e))?;
+
+        texture.update(None, img, width as usize * 4)
+            .map_err(|e| format!("Failed to update texture: {}", e))?;
+
+        render_fn(&texture)
+    }
+
+    /// Draw a texture to the canvas
+    pub fn draw_texture(&mut self, texture: &sdl2::render::Texture, src: Option<Rect>, dst: Option<Rect>) -> Result<(), String> {
+        self.canvas.copy(texture, src, dst)
+            .map_err(|e| format!("Failed to draw texture: {}", e))
     }
 }
 

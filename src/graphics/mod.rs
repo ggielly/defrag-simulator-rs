@@ -14,10 +14,16 @@ pub mod win98_widgets;
 pub mod fonts;
 
 #[cfg(feature = "graphical")]
+pub mod resource_manager;
+
+#[cfg(feature = "graphical")]
 pub use sdl_backend::SdlBackend;
 
 #[cfg(feature = "graphical")]
 pub use win98_renderer::Win98GraphicalRenderer;
+
+#[cfg(feature = "graphical")]
+pub use resource_manager::ResourceCache;
 
 #[cfg(feature = "graphical")]
 pub use fonts::{FontManager, FontSize, TextRenderer};

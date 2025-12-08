@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use super::sdl_backend::{colors, SdlBackend, SdlConfig, SdlEvent};
 use super::win98_widgets::{Button, ButtonState, ProgressBar, SunkenPanel, Win98WindowWidget};
+use super::ResourceCache;
 use crate::app::App;
 use crate::models::{ClusterState, DefragPhase};
 
@@ -48,6 +49,7 @@ impl From<&ClusterState> for Win98ClusterState {
 /// The main Win98 graphical renderer
 pub struct Win98GraphicalRenderer {
     backend: SdlBackend,
+    resource_cache: ResourceCache,
     // UI State
     window_widget: Win98WindowWidget,
     settings_button: Button,
@@ -134,8 +136,21 @@ impl Win98GraphicalRenderer {
             "Stop",
         );
         
+        // Create and initialize the resource cache with all needed images
+        let mut resource_cache = ResourceCache::new();
+
+        // Load all the UI images
+        let _ = resource_cache.load_image_from_file("cluster_sprites", "static/imgs/cluster_sprites.png");
+        let _ = resource_cache.load_image_from_file("border_left", "static/imgs/border_left.png");
+        let _ = resource_cache.load_image_from_file("right_scroll_bar", "static/imgs/right_scroll_bar.png");
+        let _ = resource_cache.load_image_from_file("title_left", "static/imgs/title_left.png");
+        let _ = resource_cache.load_image_from_file("title_right", "static/imgs/title_right.png");
+        let _ = resource_cache.load_image_from_file("title_bg", "static/imgs/title_bg.png");
+        let _ = resource_cache.load_image_from_file("top_right_scroll", "static/imgs/top_right_scroll.png");
+
         Ok(Self {
             backend,
+            resource_cache,
             window_widget,
             settings_button,
             start_pause_button,
@@ -396,26 +411,28 @@ impl Win98GraphicalRenderer {
     /// Draw the disk cluster grid
     fn draw_disk_grid(&mut self, app: &App) {
         let inner = self.disk_panel.inner_area();
-        
+
         // Calculate grid dimensions
         let cols = (inner.width / (CLUSTER_SIZE + CLUSTER_GAP)) as usize;
         let rows = (inner.height / (CLUSTER_SIZE + CLUSTER_GAP)) as usize;
-        
+
+        // For now, use the simple colored rectangles approach
+        // The texture implementation needs to be restructured to work with SDL2 lifetimes
         for (i, cluster) in app.clusters.iter().enumerate() {
             let col = i % cols;
             let row = i / cols;
-            
+
             if row >= rows {
                 break;
             }
-            
+
             let x = inner.x + (col as u32 * (CLUSTER_SIZE + CLUSTER_GAP)) as i32;
             let y = inner.y + (row as u32 * (CLUSTER_SIZE + CLUSTER_GAP)) as i32;
-            
+
             // Get color based on cluster state
             let win98_state = Win98ClusterState::from(cluster);
             let color = win98_state.color();
-            
+
             self.backend.fill_rect(x, y, CLUSTER_SIZE, CLUSTER_SIZE, color);
         }
     }
