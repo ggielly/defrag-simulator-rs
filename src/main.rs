@@ -1,6 +1,6 @@
-use std::io::Result;
 use clap::Parser;
 use defrag_simulator_rs::{app, ui};
+use std::io::Result;
 
 // -- Main Application Logic ---------------------------------------------------
 
@@ -13,11 +13,11 @@ fn main() -> Result<()> {
     #[cfg(feature = "graphical")]
     {
         use defrag_simulator_rs::{constants::defrag_type::DefragStyle, graphics};
-        
+
         if matches!(ui_style, DefragStyle::Windows98 | DefragStyle::Windows95) {
             // Run graphical mode
             let mut app = app::App::new(width, height, args.fill, args.sound, args.drive, ui_style);
-            
+
             if let Err(e) = graphics::win98_renderer::run_win98_graphical(&mut app) {
                 eprintln!("Graphical mode failed: {}", e);
                 eprintln!("Falling back to terminal mode...");
@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     }
 
     // Terminal mode (MS-DOS style or fallback)
-    
+
     // Setup terminal
     let mut tui = ui::TuiWrapper::new()?;
 

@@ -50,8 +50,8 @@ pub fn render_app(app: &App, frame: &mut Frame) {
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), 
-            Constraint::Min(0),    
+            Constraint::Length(1),
+            Constraint::Min(0),
             Constraint::Length(7),
         ])
         .split(frame.area());
@@ -130,12 +130,7 @@ fn render_menu_dropdown(app: &App, frame: &mut Frame, area: Rect) {
     let max_width = items.iter().map(|s| s.len()).max().unwrap_or(10) + 4;
     let menu_height = items.len() as u16 + 2;
 
-    let menu_area = Rect::new(
-        area.x + menu_x,
-        area.y + 1, 
-        max_width as u16,
-        menu_height,
-    );
+    let menu_area = Rect::new(area.x + menu_x, area.y + 1, max_width as u16, menu_height);
 
     let menu_block = Block::new()
         .borders(Borders::ALL)
@@ -278,9 +273,12 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     } else {
         "Full optimization".to_string()
     };
-    
+
     let line5_content = format!("{:^38}", status_text);
-    let line5 = format!("│{}  ││ Drive C: ░ = Unused space              │", line5_content);
+    let line5 = format!(
+        "│{}  ││ Drive C: ░ = Unused space              │",
+        line5_content
+    );
 
     frame.render_widget(
         Paragraph::new(line5).style(Style::new().on_blue()),
@@ -300,13 +298,11 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         match app.phase {
             DefragPhase::Initializing => "Initializing...",
             DefragPhase::Analyzing => "Analyzing disk...",
-            DefragPhase::Defragmenting => {
-                match app.animation_step % 3 {
-                    0 => "Reading...",
-                    1 => "Writing...",
-                    _ => "Updating FAT...",
-                }
-            }
+            DefragPhase::Defragmenting => match app.animation_step % 3 {
+                0 => "Reading...",
+                1 => "Writing...",
+                _ => "Updating FAT...",
+            },
             DefragPhase::Finished => "Complete",
         }
     };
@@ -321,7 +317,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
 
     let version_text = "| MS-DOS defrag ";
     let total_width = area.width as usize;
-    let action_len = action_text.len() + demo_indicator.len() + 2; 
+    let action_len = action_text.len() + demo_indicator.len() + 2;
     let sound_len = sound_indicator.len();
     let version_len = version_text.len();
     let padding = total_width.saturating_sub(action_len + sound_len + version_len);

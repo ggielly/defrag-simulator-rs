@@ -1,9 +1,9 @@
-pub mod audio;
 pub mod app;
-pub mod ui;
-pub mod models;
+pub mod audio;
 pub mod constants;
-pub mod win98;
+pub mod dos_files;
 #[cfg(feature = "graphical")]
 pub mod graphics;
-pub mod dos_files;
+pub mod models;
+pub mod ui;
+pub mod win98;

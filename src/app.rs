@@ -494,12 +494,10 @@ impl App {
 
         let mut last_tick = Instant::now();
         while self.running {
-            term.draw(|frame| {
-                match self.ui_style {
-                    DefragStyle::Windows98 => crate::win98::render_win98_app(&self, frame),
-                    DefragStyle::Windows95 => crate::win98::render_win98_app(&self, frame),
-                    DefragStyle::MsDos => crate::ui::render_app(&self, frame),
-                }
+            term.draw(|frame| match self.ui_style {
+                DefragStyle::Windows98 => crate::win98::render_win98_app(&self, frame),
+                DefragStyle::Windows95 => crate::win98::render_win98_app(&self, frame),
+                DefragStyle::MsDos => crate::ui::render_app(&self, frame),
             })?;
 
             if rx.try_recv().is_ok() {
@@ -620,7 +618,6 @@ impl App {
             self.status_message = self.get_phase_status().to_string();
         }
 
-
         match self.phase {
             DefragPhase::Initializing => {
                 if self.animation_step > 20 {
@@ -647,7 +644,10 @@ impl App {
                 }
             }
             DefragPhase::Defragmenting => {
-                if self.current_op_end_time.map_or(true, |t| Instant::now() >= t) {
+                if self
+                    .current_op_end_time
+                    .map_or(true, |t| Instant::now() >= t)
+                {
                     let mut rng = rand::thread_rng();
                     let clusters_per_operation = (self.current_drive.iops() as usize).max(1);
 
@@ -664,10 +664,12 @@ impl App {
                             self.current_filename = self.file_provider.get_random_filename();
                             let file_size = rng.gen_range(1..=5);
 
-                             let base_duration_ms = rng.gen_range(1000..=3000);
-                             let iops_factor = self.current_drive.iops().max(1) as f64;
-                             let final_duration = Duration::from_millis((base_duration_ms as f64 / iops_factor) as u64);
-                             self.current_op_end_time = Some(Instant::now() + final_duration);
+                            let base_duration_ms = rng.gen_range(1000..=3000);
+                            let iops_factor = self.current_drive.iops().max(1) as f64;
+                            let final_duration = Duration::from_millis(
+                                (base_duration_ms as f64 / iops_factor) as u64,
+                            );
+                            self.current_op_end_time = Some(Instant::now() + final_duration);
 
                             self.clusters[pending_idx] = ClusterState::Reading;
                             self.read_pos = Some(pending_idx);
@@ -675,19 +677,21 @@ impl App {
                                 audio.play_seek();
                             }
 
-                            if let Some(unused_start_idx) = self.find_contiguous_unused_clusters(file_size) {
+                            if let Some(unused_start_idx) =
+                                self.find_contiguous_unused_clusters(file_size)
+                            {
                                 for i in 0..file_size.min(clusters_per_operation) {
                                     if unused_start_idx + i < self.clusters.len() {
                                         self.clusters[unused_start_idx + i] = ClusterState::Writing;
                                     }
                                 }
                                 self.write_pos = Some(unused_start_idx);
-                                self.current_file_read_progress = Some(FileDefragPhase::Reading { progress: 0 });
+                                self.current_file_read_progress =
+                                    Some(FileDefragPhase::Reading { progress: 0 });
                                 self.status_message = format!(
                                     "Reading {}...",
                                     self.current_filename.as_deref().unwrap_or("file")
                                 );
-
                             } else {
                                 self.clusters[pending_idx] = ClusterState::Used;
                                 self.stats.clusters_defragged += 1;
@@ -715,7 +719,8 @@ impl App {
                                         }
                                     }
                                 }
-                                self.current_file_read_progress = Some(FileDefragPhase::Writing { progress: 0 });
+                                self.current_file_read_progress =
+                                    Some(FileDefragPhase::Writing { progress: 0 });
                                 self.status_message = format!(
                                     "Writing {}...",
                                     self.current_filename.as_deref().unwrap_or("file")
@@ -742,14 +747,12 @@ impl App {
                                 self.current_filename = None;
                                 self.current_op_end_time = Some(Instant::now());
                                 self.status_message = "Looking for next file...".to_string();
-
                             }
                             None => {}
                         }
                     }
-                }
-                 else {
-                    let dots = ".".repeat(((self.animation_step % 4)) as usize);
+                } else {
+                    let dots = ".".repeat((self.animation_step % 4) as usize);
                     let base_message = match self.current_file_read_progress {
                         Some(FileDefragPhase::Reading { .. }) => "Reading",
                         Some(FileDefragPhase::Writing { .. }) => "Writing",
@@ -842,11 +845,7 @@ impl App {
         &self.pending_indices_cache
     }
 
-    fn find_next_cluster_in_file(
-        &self,
-        start_pos: usize,
-        state: ClusterState,
-    ) -> Option<usize> {
+    fn find_next_cluster_in_file(&self, start_pos: usize, state: ClusterState) -> Option<usize> {
         for i in (start_pos + 1)..self.clusters.len() {
             if self.clusters[i] == state {
                 return Some(i);
@@ -876,7 +875,6 @@ impl App {
             DefragPhase::Finished => "Complete",
         }
     }
-
 
     pub fn status_text(&self) -> &str {
         if self.paused {

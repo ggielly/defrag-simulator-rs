@@ -9,12 +9,12 @@ terminal = []
 graphical = ["sdl2", "image"]
 
 [dependencies]
-crossterm = "0.27"
+crossterm = "0.29"
 rand = "0.8"
 clap = { version = "4.0", features = ["derive"] }
 ratatui = { version = "0.29.0", features = ["crossterm"] }
 ctrlc = "3.5.1"
-rodio = { version = "0.19", default-features = false, features = ["mp3"] }
+rodio = { version = "0.20.1", default-features = false, features = ["mp3"] }
 
 # SDL2 for graphical Win95/Win98 interfaces
 # Requires: sudo apt install libsdl2-dev libsdl2-ttf-dev

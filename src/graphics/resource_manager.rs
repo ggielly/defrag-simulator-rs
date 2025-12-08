@@ -2,11 +2,11 @@
 //! Provides a centralized way to load, cache and manage graphical assets
 //! Designed for reuse across different UIs (Win95, Win98, Symantec defrag, etc.)
 
+use image::RgbaImage;
 use sdl2::render::{Canvas, Texture};
 use sdl2::video::Window;
 use std::collections::HashMap;
 use std::path::Path;
-use image::RgbaImage;
 
 /// Type alias for texture IDs
 pub type TextureId = String;
@@ -26,7 +26,9 @@ impl std::fmt::Display for ResourceManagerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ResourceManagerError::ImageError(msg) => write!(f, "Image error: {}", msg),
-            ResourceManagerError::TextureCreationError(msg) => write!(f, "Texture creation error: {}", msg),
+            ResourceManagerError::TextureCreationError(msg) => {
+                write!(f, "Texture creation error: {}", msg)
+            }
             ResourceManagerError::MissingResource(name) => write!(f, "Missing resource: {}", name),
         }
     }
@@ -62,11 +64,7 @@ impl ResourceCache {
     }
 
     /// Loads an image from bytes and stores it in the cache
-    pub fn load_image_from_bytes(
-        &mut self,
-        id: &str,
-        data: &[u8],
-    ) -> ResourceManagerResult<()> {
+    pub fn load_image_from_bytes(&mut self, id: &str, data: &[u8]) -> ResourceManagerResult<()> {
         let img = image::load_from_memory(data)
             .map(|img| img.to_rgba8())
             .map_err(|e| ResourceManagerError::ImageError(e.to_string()))?;
@@ -114,7 +112,7 @@ impl ResourceCache {
                 for (_i, (x, y, pixel)) in img.enumerate_pixels().enumerate() {
                     let buffer_index = y as usize * pitch + x as usize * 4;
                     if buffer_index + 3 < buffer.len() {
-                        buffer[buffer_index] = pixel[0];     // R
+                        buffer[buffer_index] = pixel[0]; // R
                         buffer[buffer_index + 1] = pixel[1]; // G
                         buffer[buffer_index + 2] = pixel[2]; // B
                         buffer[buffer_index + 3] = pixel[3]; // A
@@ -123,8 +121,7 @@ impl ResourceCache {
             })
             .map_err(|e| ResourceManagerError::TextureCreationError(e.to_string()))?;
 
-        render_fn(&texture)
-            .map_err(|e| ResourceManagerError::TextureCreationError(e))?;
+        render_fn(&texture).map_err(|e| ResourceManagerError::TextureCreationError(e))?;
 
         Ok(())
     }

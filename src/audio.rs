@@ -92,7 +92,7 @@ impl AudioEngine {
         let rate = (1000.0 / (iops as f32)).max(0.1).min(4.0);
         self.playback_rate = rate;
     }
-    
+
     /// Plays an embedded sound from memory with the current playback rate
     fn play_embedded_sound(&self, sound_data: Cursor<&'static [u8]>) {
         if !self.enabled {
@@ -139,13 +139,13 @@ impl AudioEngine {
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
-    
+
     /// Plays a looping background sound (ambient drive noise)
     /// This creates continuous background ambiance during defragmentation
     pub fn play_loop_sound(&self) {
         self.play_embedded_sound(EmbeddedAudioResources::loop_sound());
     }
-    
+
     /// Stops all currently playing sounds
     pub fn stop_all(&self) {
         self.sink.stop();
