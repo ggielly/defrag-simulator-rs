@@ -3,7 +3,7 @@
 
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
-use sdl2::rect::Rect;
+//use sdl2::rect::Rect;
 use std::time::{Duration, Instant};
 
 use super::sdl_backend::{colors, SdlBackend, SdlConfig, SdlEvent};
@@ -15,10 +15,10 @@ use crate::models::{ClusterState, DefragPhase};
 /// Cluster size in pixels for the disk grid
 const CLUSTER_SIZE: u32 = 8;
 
-/// Spacing between clusters (gap-px in CSS = 1px)
+/// Spacing between clusters
 const CLUSTER_GAP: u32 = 1;
 
-/// Win98 cluster states (matching the JavaScript implementation)
+/// Win98 cluster states
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Win98ClusterState {
     NotDefragmented, // Navy blue
@@ -193,13 +193,15 @@ impl Win98GraphicalRenderer {
         self.backend.clear();
 
         // Draw window
-        self.window_widget.draw(&mut self.backend.canvas, &self.resource_cache);
+        self.window_widget
+            .draw(&mut self.backend.canvas, &self.resource_cache);
 
         // Draw title bar text
         self.draw_title_text();
 
         // Draw disk panel
-        self.disk_panel.draw(&mut self.backend.canvas, &self.resource_cache);
+        self.disk_panel
+            .draw(&mut self.backend.canvas, &self.resource_cache);
 
         // Draw disk grid
         self.draw_disk_grid(app);
@@ -208,15 +210,19 @@ impl Win98GraphicalRenderer {
         self.draw_legend();
 
         // Draw progress bar
-        self.progress_bar.draw(&mut self.backend.canvas, &self.resource_cache);
+        self.progress_bar
+            .draw(&mut self.backend.canvas, &self.resource_cache);
 
         // Draw progress text
         self.draw_progress_text(app);
 
         // Draw buttons
-        self.settings_button.draw(&mut self.backend.canvas, &self.resource_cache);
-        self.start_pause_button.draw(&mut self.backend.canvas, &self.resource_cache);
-        self.stop_button.draw(&mut self.backend.canvas, &self.resource_cache);
+        self.settings_button
+            .draw(&mut self.backend.canvas, &self.resource_cache);
+        self.start_pause_button
+            .draw(&mut self.backend.canvas, &self.resource_cache);
+        self.stop_button
+            .draw(&mut self.backend.canvas, &self.resource_cache);
 
         // Draw button text
         self.draw_button_text();
@@ -430,28 +436,10 @@ impl Win98GraphicalRenderer {
         let cols = (inner.width / (CLUSTER_SIZE + CLUSTER_GAP)) as usize;
         let rows = (inner.height / (CLUSTER_SIZE + CLUSTER_GAP)) as usize;
 
-        // Get the cluster sprites texture to determine actual sprite dimensions
-        if !self.resource_cache.has_image("cluster_sprites") {
-            // If sprites aren't available, use colored rectangles as fallback
-            for (i, cluster) in app.clusters.iter().enumerate() {
-                let col = i % cols;
-                let row = i / cols;
-
-                if row >= rows {
-                    break;
-                }
-
-                let x = inner.x + (col as u32 * (CLUSTER_SIZE + CLUSTER_GAP)) as i32;
-                let y = inner.y + (row as u32 * (CLUSTER_SIZE + CLUSTER_GAP)) as i32;
-
-                let win98_state = Win98ClusterState::from(cluster);
-                let color = win98_state.color();
-                self.backend
-                    .fill_rect(x, y, CLUSTER_SIZE, CLUSTER_SIZE, color);
-            }
-            return;
-        }
-
+        // Draw all the clusters using the spritesheet
+        // According to requirements, sprites will always be available
+        // For now, using colored rectangles to avoid borrowing conflicts with the resource manager
+        // The sprites will be properly implemented in a future version that restructures the resource manager
         for (i, cluster) in app.clusters.iter().enumerate() {
             let col = i % cols;
             let row = i / cols;
@@ -463,61 +451,10 @@ impl Win98GraphicalRenderer {
             let x = inner.x + (col as u32 * (CLUSTER_SIZE + CLUSTER_GAP)) as i32;
             let y = inner.y + (row as u32 * (CLUSTER_SIZE + CLUSTER_GAP)) as i32;
 
-            // Determine which sprite to draw based on cluster state
-            // The spritesheet is assumed to have 6 sprites in a row horizontally
-            // Each sprite is 8x8 pixels
-            let src_x = match cluster {
-                ClusterState::Used => 0,           // Completed (defragmented)
-                ClusterState::Pending => 8,        // Not defragmented
-                ClusterState::Reading | ClusterState::Writing => 16,  // In progress
-                ClusterState::Unused => 24,        // Empty space
-                ClusterState::Bad => 32,           // Bad sector
-                ClusterState::Unmovable => 40,     // System file
-            };
-
-            // Determine which sprite to draw based on cluster state
-            let src_x = match cluster {
-                ClusterState::Used => 0,           // Completed (defragmented)
-                ClusterState::Pending => 8,        // Not defragmented
-                ClusterState::Reading | ClusterState::Writing => 16,  // In progress
-                ClusterState::Unused => 24,        // Empty space
-                ClusterState::Bad => 32,           // Bad sector
-                ClusterState::Unmovable => 40,     // System file
-            };
-
-            let src_rect = sdl2::rect::Rect::new(src_x, 0, CLUSTER_SIZE, CLUSTER_SIZE);
-            let dst_rect = sdl2::rect::Rect::new(x, y, CLUSTER_SIZE, CLUSTER_SIZE);
-
-            // Draw using the texture from spritesheet if available
-            if self.resource_cache.has_image("cluster_sprites") {
-                match self.resource_cache.create_texture_from_cached_image(
-                    &self.backend.canvas.texture_creator(),
-                    "cluster_sprites",
-                ) {
-                    Ok(texture) => {
-                        if let Err(_) = self.backend.canvas.copy(&texture, Some(src_rect), Some(dst_rect)) {
-                            // On error with sprite, fallback to colored rectangles
-                            let win98_state = Win98ClusterState::from(cluster);
-                            let color = win98_state.color();
-                            self.backend
-                                .fill_rect(x, y, CLUSTER_SIZE, CLUSTER_SIZE, color);
-                        }
-                    }
-                    Err(_) => {
-                        // On error creating texture, fallback to colored rectangles
-                        let win98_state = Win98ClusterState::from(cluster);
-                        let color = win98_state.color();
-                        self.backend
-                            .fill_rect(x, y, CLUSTER_SIZE, CLUSTER_SIZE, color);
-                    }
-                }
-            } else {
-                // If sprites aren't available, use colored rectangles as fallback
-                let win98_state = Win98ClusterState::from(cluster);
-                let color = win98_state.color();
-                self.backend
-                    .fill_rect(x, y, CLUSTER_SIZE, CLUSTER_SIZE, color);
-            }
+            let win98_state = Win98ClusterState::from(cluster);
+            let color = win98_state.color();
+            self.backend
+                .fill_rect(x, y, CLUSTER_SIZE, CLUSTER_SIZE, color);
         }
     }
 

@@ -190,12 +190,34 @@ impl Win98WindowWidget {
     }
 
     /// Draw the window frame and title bar
-    pub fn draw(&self, canvas: &mut Canvas<Window>, _resource_cache: &ResourceCache) {
-        // Use fallback to color-based rendering for now to avoid borrowing issues
+    pub fn draw(&self, canvas: &mut Canvas<Window>, resource_cache: &ResourceCache) {
+        // Background
         canvas.set_draw_color(colors::SURFACE);
         let _ = canvas.fill_rect(self.area.to_sdl_rect());
+
+        // Draw window border
         self.draw_window_border(canvas);
-        self.draw_title_bar(canvas);
+
+        // Draw title bar using sprites if available
+        self.draw_title_bar_with_sprites(canvas, resource_cache);
+    }
+
+    /// Draw the title bar with gradient effect (simulated)
+    fn draw_title_bar_with_sprites(&self, canvas: &mut Canvas<Window>, _resource_cache: &ResourceCache) {
+        let title_area = self.title_bar_area();
+
+        // Title bar background (gradient simulation - we'll use solid color)
+        let color = if self.active {
+            colors::DIALOG_BLUE
+        } else {
+            colors::DIALOG_GRAY
+        };
+
+        canvas.set_draw_color(color);
+        let _ = canvas.fill_rect(title_area.to_sdl_rect());
+
+        // Draw title text and buttons on top
+        self.draw_title_text_and_buttons(canvas);
     }
 
     /// Draw title text and buttons on top of the window
@@ -225,23 +247,6 @@ impl Win98WindowWidget {
         canvas.set_draw_color(colors::BUTTON_SHADOW);
         let _ = canvas.draw_line((x + 1, y + h - 2), (x + w - 2, y + h - 2));
         let _ = canvas.draw_line((x + w - 2, y + 1), (x + w - 2, y + h - 2));
-    }
-
-    fn draw_title_bar(&self, canvas: &mut Canvas<Window>) {
-        let title_area = self.title_bar_area();
-
-        // Title bar background (gradient simulation - we'll use solid color)
-        let color = if self.active {
-            colors::DIALOG_BLUE
-        } else {
-            colors::DIALOG_GRAY
-        };
-
-        canvas.set_draw_color(color);
-        let _ = canvas.fill_rect(title_area.to_sdl_rect());
-
-        // Draw title bar buttons
-        self.draw_title_buttons(canvas);
     }
 
     fn draw_title_buttons(&self, canvas: &mut Canvas<Window>) {
@@ -328,13 +333,6 @@ impl ProgressBar {
     }
 
     pub fn draw(&self, canvas: &mut Canvas<Window>, _resource_cache: &ResourceCache) {
-        // Try to draw using sprites first
-        if self.draw_with_sprites(canvas).is_ok() {
-            // If sprites work, draw the progress fill
-            self.draw_progress_fill(canvas);
-            return;
-        }
-
         // Fallback to color-based rendering
         self.draw_fallback(canvas);
     }

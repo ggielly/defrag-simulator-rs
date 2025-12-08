@@ -87,7 +87,7 @@ impl AudioEngine {
     /// Updates the playback rate based on the disk IOPS (Input/Output Operations Per Second)
     /// Higher IOPS means faster audio playback, simulating faster disk performance
     pub fn set_iops(&mut self, iops: u32) {
-        // Calculate playback rate based on IOPS following the JavaScript formula: 1000 / iops
+        // Calculate playback rate based on IOPS
         // Using a minimum of 0.1 and maximum of 4.0 to avoid extreme values
         let rate = (1000.0 / (iops as f32)).max(0.1).min(4.0);
         self.playback_rate = rate;

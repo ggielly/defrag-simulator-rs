@@ -91,14 +91,20 @@ impl ResourceCache {
         self.images.contains_key(id)
     }
 
-    /// Creates a texture from a cached image using the TextureCreator
-    /// This approach avoids the borrowing issue by using the TextureCreator separately
-    pub fn create_texture_from_cached_image(
+    /// Creates and renders a texture from a cached image using the provided render function
+    /// This function creates the texture temporarily and renders it using the render function
+    pub fn with_texture_from_cached_image<F>(
         &self,
-        texture_creator: &TextureCreator<Window>,
+        canvas: &mut Canvas<Window>,
         id: &str,
-    ) -> ResourceManagerResult<Texture> {
+        render_fn: F,
+    ) -> ResourceManagerResult<()>
+    where
+        F: FnOnce(&Texture) -> Result<(), String>,
+    {
         let img = self.get_image(id)?;
+
+        let texture_creator = canvas.texture_creator();
         let (width, height) = img.dimensions();
 
         let mut texture = texture_creator
@@ -121,7 +127,9 @@ impl ResourceCache {
             })
             .map_err(|e| ResourceManagerError::TextureCreationError(e.to_string()))?;
 
-        Ok(texture)
+        render_fn(&texture).map_err(|e| ResourceManagerError::TextureCreationError(e))?;
+
+        Ok(())
     }
 
     /// Checks if cache is empty

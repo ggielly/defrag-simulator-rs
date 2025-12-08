@@ -11,7 +11,7 @@ use sdl2::render::{Canvas, TextureCreator};
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{Window, WindowContext};
 
-/// Windows 98 color palette (from CSS)
+/// Windows 98 color palette
 pub mod colors {
     use sdl2::pixels::Color;
 

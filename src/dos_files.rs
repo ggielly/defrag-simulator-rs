@@ -201,7 +201,7 @@ pub const MONKEY_ISLAND_FILES: &[&str] = &[
     "MONKEY\\DISK01.LEC",
 ];
 
-// --- Windows 3.1 / 3.11 
+// --- Windows 3.1 / 3.11
 pub const WINDOWS_31_FILES: &[&str] = &[
     "WINDOWS\\WIN.COM",
     "WINDOWS\\SYSTEM.INI",

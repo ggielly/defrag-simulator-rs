@@ -9,7 +9,10 @@ use sdl2::video::Window;
 use std::path::Path;
 
 /// Embedded font data (VT323 - a pixel-style font)
-pub const FONT_DATA: &[u8] = include_bytes!("../../static/fonts/VT323.ttf");
+//pub const FONT_DATA: &[u8] = include_bytes!("../../static/fonts/VT323.ttf");
+
+/// Embedded font data (MS Sans Serif - Win98 style)
+pub const FONT_DATA: &[u8] = include_bytes!("../../static/fonts/MicrosoftSansSerif.ttf");
 
 /// Font sizes used in Win98 UI
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
