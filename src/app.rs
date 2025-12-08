@@ -34,7 +34,7 @@ pub struct Args {
     pub fill: f32,
 
     /// Enable HDD sounds
-    #[arg(long, short = 's', default_value_t = false)]
+    #[arg(long, short = 's', default_value_t = true)]
     pub sound: bool,
 
     /// Select disk drive (C, D, E, or F)
