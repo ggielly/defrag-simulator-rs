@@ -2,8 +2,6 @@ pub mod app;
 pub mod audio;
 pub mod constants;
 pub mod dos_files;
-#[cfg(feature = "graphical")]
 pub mod graphics;
 pub mod models;
 pub mod ui;
-pub mod win98;

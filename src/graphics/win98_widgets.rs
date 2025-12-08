@@ -79,7 +79,13 @@ impl Button {
         self
     }
 
-    pub fn draw(&self, canvas: &mut Canvas<Window>) {
+    pub fn draw(&self, canvas: &mut Canvas<Window>, _resource_cache: &ResourceCache) {
+        // For now, use the fallback color-based approach since we don't have specific button sprites
+        self.draw_fallback(canvas);
+    }
+
+    /// Draw the button using colors (fallback)
+    fn draw_fallback(&self, canvas: &mut Canvas<Window>) {
         let (x, y, w, h) = (self.area.x, self.area.y, self.area.width, self.area.height);
 
         // Fill background
@@ -144,6 +150,8 @@ impl Button {
     }
 }
 
+use super::ResourceCache;
+
 /// Win98-style Window widget
 pub struct Win98WindowWidget {
     pub area: Area,
@@ -182,16 +190,18 @@ impl Win98WindowWidget {
     }
 
     /// Draw the window frame and title bar
-    pub fn draw(&self, canvas: &mut Canvas<Window>) {
-        // Window background
+    pub fn draw(&self, canvas: &mut Canvas<Window>, _resource_cache: &ResourceCache) {
+        // Use fallback to color-based rendering for now to avoid borrowing issues
         canvas.set_draw_color(colors::SURFACE);
         let _ = canvas.fill_rect(self.area.to_sdl_rect());
-
-        // Window border (outer)
         self.draw_window_border(canvas);
-
-        // Title bar
         self.draw_title_bar(canvas);
+    }
+
+    /// Draw title text and buttons on top of the window
+    fn draw_title_text_and_buttons(&self, canvas: &mut Canvas<Window>) {
+        // Draw title bar buttons
+        self.draw_title_buttons(canvas);
     }
 
     fn draw_window_border(&self, canvas: &mut Canvas<Window>) {
@@ -317,7 +327,26 @@ impl ProgressBar {
         self.progress = progress.max(0.0).min(1.0);
     }
 
-    pub fn draw(&self, canvas: &mut Canvas<Window>) {
+    pub fn draw(&self, canvas: &mut Canvas<Window>, _resource_cache: &ResourceCache) {
+        // Try to draw using sprites first
+        if self.draw_with_sprites(canvas).is_ok() {
+            // If sprites work, draw the progress fill
+            self.draw_progress_fill(canvas);
+            return;
+        }
+
+        // Fallback to color-based rendering
+        self.draw_fallback(canvas);
+    }
+
+    /// Attempt to draw the progress bar using sprite textures
+    fn draw_with_sprites(&self, _canvas: &mut Canvas<Window>) -> Result<(), String> {
+        // For now, use the fallback color-based approach since we don't have specific progress bar sprites
+        Err("No specific progress bar sprites available".to_string())
+    }
+
+    /// Draw the progress bar using colors (fallback)
+    fn draw_fallback(&self, canvas: &mut Canvas<Window>) {
         // Background (white)
         canvas.set_draw_color(colors::WHITE);
         let _ = canvas.fill_rect(self.area.to_sdl_rect());
@@ -326,6 +355,11 @@ impl ProgressBar {
         self.draw_sunken_border(canvas);
 
         // Progress fill
+        self.draw_progress_fill(canvas);
+    }
+
+    /// Draw the progress fill over the base
+    fn draw_progress_fill(&self, canvas: &mut Canvas<Window>) {
         let inner = self.area.inner(2);
         let fill_width = ((inner.width as f64) * self.progress) as u32;
         if fill_width > 0 {
@@ -368,12 +402,29 @@ impl SunkenPanel {
         self.area.inner(2)
     }
 
-    pub fn draw(&self, canvas: &mut Canvas<Window>) {
+    pub fn draw(&self, canvas: &mut Canvas<Window>, _resource_cache: &ResourceCache) {
         // Background
         canvas.set_draw_color(self.bg_color);
         let _ = canvas.fill_rect(self.area.to_sdl_rect());
 
-        // Sunken border
+        // Try to draw border using sprites first
+        if self.draw_border_with_sprites(canvas).is_ok() {
+            return; // Successfully drew border with sprites
+        }
+
+        // Fallback to color-based rendering
+        self.draw_sunken_border_colors(canvas);
+    }
+
+    /// Draw the border using sprites if available
+    fn draw_border_with_sprites(&self, _canvas: &mut Canvas<Window>) -> Result<(), String> {
+        // For now, we'll just use the color-based border as a fallback
+        // since we don't have specific sprites for sunken panel borders
+        Err("No specific border sprites available".to_string())
+    }
+
+    /// Draw the sunken border using colors (fallback)
+    fn draw_sunken_border_colors(&self, canvas: &mut Canvas<Window>) {
         let (x, y) = (self.area.x, self.area.y);
         let (w, h) = (self.area.width as i32, self.area.height as i32);
 

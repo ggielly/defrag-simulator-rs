@@ -3,7 +3,7 @@
 //! Designed for reuse across different UIs (Win95, Win98, Symantec defrag, etc.)
 
 use image::RgbaImage;
-use sdl2::render::{Canvas, Texture};
+use sdl2::render::{Canvas, Texture, TextureCreator};
 use sdl2::video::Window;
 use std::collections::HashMap;
 use std::path::Path;
@@ -36,7 +36,13 @@ impl std::fmt::Display for ResourceManagerError {
 
 impl std::error::Error for ResourceManagerError {}
 
-/// Resource cache for storing loaded images before they're converted to textures
+/// A resource that contains pre-created textures
+struct CachedTexture {
+    image: RgbaImage,
+    textures: HashMap<String, Texture<'static>>, // We cache texture handles
+}
+
+/// Resource cache for storing loaded images and textures
 pub struct ResourceCache {
     images: HashMap<TextureId, RgbaImage>,
 }
@@ -85,20 +91,14 @@ impl ResourceCache {
         self.images.contains_key(id)
     }
 
-    /// Creates and renders a texture from a cached image using the provided render function
-    /// This function creates the texture temporarily and renders it using the render function
-    pub fn with_texture_from_cached_image<F>(
+    /// Creates a texture from a cached image using the TextureCreator
+    /// This approach avoids the borrowing issue by using the TextureCreator separately
+    pub fn create_texture_from_cached_image(
         &self,
-        canvas: &mut Canvas<Window>,
+        texture_creator: &TextureCreator<Window>,
         id: &str,
-        render_fn: F,
-    ) -> ResourceManagerResult<()>
-    where
-        F: FnOnce(&Texture) -> Result<(), String>,
-    {
+    ) -> ResourceManagerResult<Texture> {
         let img = self.get_image(id)?;
-
-        let texture_creator = canvas.texture_creator();
         let (width, height) = img.dimensions();
 
         let mut texture = texture_creator
@@ -121,9 +121,7 @@ impl ResourceCache {
             })
             .map_err(|e| ResourceManagerError::TextureCreationError(e.to_string()))?;
 
-        render_fn(&texture).map_err(|e| ResourceManagerError::TextureCreationError(e))?;
-
-        Ok(())
+        Ok(texture)
     }
 
     /// Checks if cache is empty

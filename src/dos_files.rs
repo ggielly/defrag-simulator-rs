@@ -1,7 +1,7 @@
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
-// --- MS-DOS 6.22 File Categories ---
+// --- MS-DOS 6.22 file categories ---
 
 // Main MS-DOS system files
 pub const MSDOS_SYSTEM_FILES: &[&str] = &[
@@ -75,7 +75,7 @@ pub const MSDOS_COMMANDS: &[&str] = &[
 ];
 
 // Common drivers
-pub const COMMON_DRIVERS: &[&str] = &[
+pub const DRIVERS_FILES: &[&str] = &[
     "HIMEM.SYS",
     "EMM386.EXE",
     "RAMDRIVE.SYS",
@@ -107,7 +107,7 @@ pub const CONFIG_FILES: &[&str] = &[
     "QBASIC.INI",
 ];
 
-// --- Popular Application File Categories ---
+// --- Popular application file categories ---
 
 // WordPerfect 5.1
 pub const WP51_FILES: &[&str] = &[
@@ -201,7 +201,7 @@ pub const MONKEY_ISLAND_FILES: &[&str] = &[
     "MONKEY\\DISK01.LEC",
 ];
 
-// --- Windows 3.1 / 3.11 (often on top of DOS) ---
+// --- Windows 3.1 / 3.11 
 pub const WINDOWS_31_FILES: &[&str] = &[
     "WINDOWS\\WIN.COM",
     "WINDOWS\\SYSTEM.INI",
@@ -241,7 +241,7 @@ impl DosFileProvider {
         // Add all file categories
         remaining_files.extend_from_slice(MSDOS_SYSTEM_FILES);
         remaining_files.extend_from_slice(MSDOS_COMMANDS);
-        remaining_files.extend_from_slice(COMMON_DRIVERS);
+        remaining_files.extend_from_slice(DRIVERS_FILES);
         remaining_files.extend_from_slice(CONFIG_FILES);
         remaining_files.extend_from_slice(WP51_FILES);
         remaining_files.extend_from_slice(LOTUS123_FILES);

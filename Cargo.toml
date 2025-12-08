@@ -2,10 +2,13 @@
 name = "defrag-simulator-rs"
 version = "0.1.0"
 edition = "2021"
+authors = ["Guillaume Gielly <guillaume@dialup.fr>"]
+license = "GPL-3.0-or-later"
 
 [features]
-default = ["terminal"]
+default = ["terminal", "graphical"]
 terminal = []
+#graphical = ["sdl2", "image"]
 graphical = ["sdl2", "image"]
 
 [dependencies]
@@ -18,5 +21,9 @@ rodio = { version = "0.20.1", default-features = false, features = ["mp3"] }
 
 # SDL2 for graphical Win95/Win98 interfaces
 # Requires: sudo apt install libsdl2-dev libsdl2-ttf-dev
-sdl2 = { version = "0.37", optional = true, features = ["ttf"] }
+sdl2 = { version = "0.38", optional = true, features = ["bundled", "ttf"] }
+#image = { version = "0.24", optional = true }
+
+#sdl2 = { version = "0.37", optional = true, features = ["bundled"] }
+#sdl2_ttf = { version = "0.25", optional = true }
 image = { version = "0.24", optional = true }

@@ -494,11 +494,8 @@ impl App {
 
         let mut last_tick = Instant::now();
         while self.running {
-            term.draw(|frame| match self.ui_style {
-                DefragStyle::Windows98 => crate::win98::render_win98_app(&self, frame),
-                DefragStyle::Windows95 => crate::win98::render_win98_app(&self, frame),
-                DefragStyle::MsDos => crate::ui::render_app(&self, frame),
-            })?;
+            // Only MS-DOS UI is allowed in terminal mode
+            term.draw(|frame| crate::ui::render_app(&self, frame))?;
 
             if rx.try_recv().is_ok() {
                 self.running = false;
