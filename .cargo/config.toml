@@ -1,2 +1,17 @@
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-L", "C:/src/vcpkg/installed/x64-windows/lib"]
+
+[env]
+# Use vcpkg for SDL2 dependencies
+#
+####################################
+# Please setup it to your path !
+####################################
+#
+VCPKG_ROOT = "C:/src/vcpkg"
+SDL2_STATIC = "1"
+SDL2_DIR = "C:/src/vcpkg/installed/x64-windows"
+SDL2_TTF_DIR = "C:/src/vcpkg/installed/x64-windows"
+
+# Force CMake to use Visual Studio 2022 (VS 17) instead of detecting VS 18 2026
+CMAKE_GENERATOR = "Visual Studio 17 2022"

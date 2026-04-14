@@ -5,6 +5,7 @@ use super::sdl_backend::colors;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::Canvas;
+use sdl2::render::Texture;
 use sdl2::video::Window;
 
 /// A rectangular area with position and size
@@ -203,7 +204,11 @@ impl Win98WindowWidget {
     }
 
     /// Draw the title bar with gradient effect (simulated)
-    fn draw_title_bar_with_sprites(&self, canvas: &mut Canvas<Window>, _resource_cache: &ResourceCache) {
+    fn draw_title_bar_with_sprites(
+        &self,
+        canvas: &mut Canvas<Window>,
+        resource_cache: &ResourceCache,
+    ) {
         let title_area = self.title_bar_area();
 
         // Title bar background (gradient simulation - we'll use solid color)
@@ -217,13 +222,17 @@ impl Win98WindowWidget {
         let _ = canvas.fill_rect(title_area.to_sdl_rect());
 
         // Draw title text and buttons on top
-        self.draw_title_text_and_buttons(canvas);
+        self.draw_title_text_and_buttons(canvas, resource_cache);
     }
 
     /// Draw title text and buttons on top of the window
-    fn draw_title_text_and_buttons(&self, canvas: &mut Canvas<Window>) {
+    fn draw_title_text_and_buttons(
+        &self,
+        canvas: &mut Canvas<Window>,
+        resource_cache: &ResourceCache,
+    ) {
         // Draw title bar buttons
-        self.draw_title_buttons(canvas);
+        self.draw_title_buttons(canvas, resource_cache);
     }
 
     fn draw_window_border(&self, canvas: &mut Canvas<Window>) {
@@ -249,7 +258,7 @@ impl Win98WindowWidget {
         let _ = canvas.draw_line((x + w - 2, y + 1), (x + w - 2, y + h - 2));
     }
 
-    fn draw_title_buttons(&self, canvas: &mut Canvas<Window>) {
+    fn draw_title_buttons(&self, canvas: &mut Canvas<Window>, resource_cache: &ResourceCache) {
         let title_area = self.title_bar_area();
         let btn_size = 14;
         let btn_y = title_area.y + 2;
@@ -257,19 +266,19 @@ impl Win98WindowWidget {
 
         // Close button
         if self.has_close {
-            self.draw_control_button(canvas, btn_x, btn_y, btn_size as u32, 'X');
+            self.draw_control_button(canvas, btn_x, btn_y, btn_size as u32, 'X', resource_cache);
             btn_x -= btn_size + 2;
         }
 
         // Maximize button
         if self.has_maximize {
-            self.draw_control_button(canvas, btn_x, btn_y, btn_size as u32, '□');
+            self.draw_control_button(canvas, btn_x, btn_y, btn_size as u32, '□', resource_cache);
             btn_x -= btn_size;
         }
 
         // Minimize button
         if self.has_minimize {
-            self.draw_control_button(canvas, btn_x, btn_y, btn_size as u32, '_');
+            self.draw_control_button(canvas, btn_x, btn_y, btn_size as u32, '_', resource_cache);
         }
     }
 
@@ -279,9 +288,13 @@ impl Win98WindowWidget {
         x: i32,
         y: i32,
         size: u32,
-        _icon: char,
+        icon: char,
+        resource_cache: &ResourceCache,
     ) {
-        // Button background
+        // For now, skip sprite rendering due to lifetime issues
+        // Fallback to simple color-based rendering
+
+        // Button background (fallback)
         canvas.set_draw_color(colors::BUTTON_FACE);
         let _ = canvas.fill_rect(Rect::new(x, y, size, size));
 

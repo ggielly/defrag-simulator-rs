@@ -2,7 +2,11 @@ use clap::Parser;
 use defrag_simulator_rs::{app, ui};
 use std::io::Result;
 
+#[cfg(feature = "graphical")]
 use defrag_simulator_rs::{constants::defrag_type::DefragStyle, graphics};
+
+#[cfg(not(feature = "graphical"))]
+use defrag_simulator_rs::constants::defrag_type::DefragStyle;
 
 fn main() -> Result<()> {
     let args = app::Args::parse();
@@ -10,13 +14,9 @@ fn main() -> Result<()> {
     let ui_style = args.get_ui_style();
 
     // Check if we should use graphical mode for Win98/Win95
-    if matches!(
-        ui_style,
-        defrag_simulator_rs::constants::defrag_type::DefragStyle::Windows98
-            | defrag_simulator_rs::constants::defrag_type::DefragStyle::Windows95
-    ) {
+    #[cfg(feature = "graphical")]
+    if matches!(ui_style, DefragStyle::Windows98 | DefragStyle::Windows95) {
         // Run graphical mode (required for Win98/Win95)
-
         let mut app = app::App::new(width, height, args.fill, args.sound, args.drive, ui_style);
 
         if let Err(e) = graphics::win98_renderer::run_win98_graphical(&mut app) {
