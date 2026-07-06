@@ -21,5 +21,5 @@ rodio = { version = "0.20.1", default-features = false, features = ["mp3"] }
 # SDL2 for graphical Win95/Win98 interfaces
 # On Linux: install libsdl2-dev libsdl2-ttf-dev libxext-dev
 # On Windows: uses bundled SDL2 via vcpkg
-sdl2 = { version = "0.38", optional = true, features = ["bundled", "ttf", "static-link"] }
+sdl2 = { version = "0.38", optional = true, features = ["bundled", "ttf"] }
 image = { version = "0.24", optional = true }
