@@ -1,8 +1,6 @@
 //! SDL2 Backend for graphical rendering
 //! Provides the core SDL2 initialization and event handling
 
-#[cfg(feature = "graphical")]
-use image;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;

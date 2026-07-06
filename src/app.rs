@@ -199,64 +199,6 @@ pub enum FileDefragPhase {
 
 // -- Application state --------------------------------------------------------
 
-/// Cache for tracking free space regions (optimization)
-#[derive(Debug, Clone)]
-pub struct FreeSpaceCache {
-    /// List of (start_index, length) for contiguous free regions
-    regions: Vec<(usize, usize)>,
-    /// Whether the cache needs rebuilding
-    dirty: bool,
-}
-
-impl FreeSpaceCache {
-    pub fn new() -> Self {
-        Self {
-            regions: Vec::new(),
-            dirty: true,
-        }
-    }
-
-    /// Mark cache as needing rebuild
-    pub fn invalidate(&mut self) {
-        self.dirty = true;
-    }
-
-    /// Rebuild the cache from cluster state
-    pub fn rebuild(&mut self, clusters: &[ClusterState]) {
-        self.regions.clear();
-        let mut start: Option<usize> = None;
-        let mut length = 0;
-
-        for (i, &cluster) in clusters.iter().enumerate() {
-            if cluster == ClusterState::Unused {
-                if start.is_none() {
-                    start = Some(i);
-                }
-                length += 1;
-            } else if let Some(s) = start {
-                self.regions.push((s, length));
-                start = None;
-                length = 0;
-            }
-        }
-
-        if let Some(s) = start {
-            self.regions.push((s, length));
-        }
-
-        self.regions.sort_by(|a, b| b.1.cmp(&a.1));
-        self.dirty = false;
-    }
-
-    /// Find a region with at least `size` contiguous clusters
-    pub fn find_region(&self, size: usize) -> Option<usize> {
-        self.regions
-            .iter()
-            .find(|(_, len)| *len >= size)
-            .map(|(start, _)| *start)
-    }
-}
-
 pub struct App {
     pub running: bool,
     pub paused: bool,
@@ -282,10 +224,8 @@ pub struct App {
     pub current_drive: DiskDrive,
     pub drive_collection: DiskDriveCollection,
     pub ui_style: DefragStyle,
-    free_space_cache: FreeSpaceCache,
     pub demo_mode: bool,
-    pending_indices_cache: Vec<usize>,
-    pending_cache_dirty: bool,
+    fill_percent: f32,
 }
 
 impl App {
@@ -379,10 +319,8 @@ impl App {
             current_drive,
             drive_collection,
             ui_style,
-            free_space_cache: FreeSpaceCache::new(),
             demo_mode: false,
-            pending_indices_cache: Vec::new(),
-            pending_cache_dirty: true,
+            fill_percent,
         }
     }
 
@@ -404,7 +342,7 @@ impl App {
     pub fn restart(&mut self) {
         let mut rng = rand::thread_rng();
         let total_clusters = self.width * self.height;
-        let fill_percent = ui_const::DEFAULT_FILL_PERCENT;
+        let fill_percent = self.fill_percent;
 
         let num_pending = (total_clusters as f32 * fill_percent) as usize;
         let num_bad = (total_clusters as f32 * ui_const::BAD_BLOCK_PERCENT) as usize;
@@ -453,9 +391,6 @@ impl App {
         self.status_message = "Initializing...".to_string();
         self.paused = false;
         self.file_provider = DosFileProvider::new();
-
-        self.free_space_cache.invalidate();
-        self.pending_cache_dirty = true;
     }
 
     pub fn estimated_time_remaining(&self) -> Option<Duration> {
@@ -820,34 +755,6 @@ impl App {
             }
         }
 
-        None
-    }
-
-    fn invalidate_caches(&mut self) {
-        self.free_space_cache.invalidate();
-        self.pending_cache_dirty = true;
-    }
-
-    fn get_pending_indices(&mut self) -> &[usize] {
-        if self.pending_cache_dirty {
-            self.pending_indices_cache = self
-                .clusters
-                .iter()
-                .enumerate()
-                .filter(|&(_, c)| *c == ClusterState::Pending)
-                .map(|(i, _)| i)
-                .collect();
-            self.pending_cache_dirty = false;
-        }
-        &self.pending_indices_cache
-    }
-
-    fn find_next_cluster_in_file(&self, start_pos: usize, state: ClusterState) -> Option<usize> {
-        for i in (start_pos + 1)..self.clusters.len() {
-            if self.clusters[i] == state {
-                return Some(i);
-            }
-        }
         None
     }
 

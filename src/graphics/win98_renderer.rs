@@ -509,7 +509,11 @@ impl Win98GraphicalRenderer {
         let status_text = if let Some(filename) = &app.current_filename {
             let max_len = 45;
             let display_name = if filename.len() > max_len {
-                &filename[..max_len]
+                let mut end = max_len;
+                while end > 0 && !filename.is_char_boundary(end) {
+                    end -= 1;
+                }
+                &filename[..end]
             } else {
                 filename
             };

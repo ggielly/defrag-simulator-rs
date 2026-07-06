@@ -93,13 +93,13 @@ pub mod audio {
     ///
     /// # Example
     /// ```
-    /// use defrag_rs::constants::audio::calculate_playback_rate;
+    /// use defrag_simulator_rs::constants::audio::calculate_playback_rate;
     ///
     /// // Slow disk (1 IOPS) -> slow playback
     /// let rate = calculate_playback_rate(1);
     /// assert!(rate < 1.0);
     ///
-    /// // Fast disk (8 IOPS) -> faster playback  
+    /// // Fast disk (8 IOPS) -> faster playback
     /// let rate = calculate_playback_rate(8);
     /// assert!(rate > 1.0);
     /// ```
@@ -118,27 +118,7 @@ pub mod audio {
         rate.max(MIN_PLAYBACK_RATE).min(MAX_PLAYBACK_RATE)
     }
 
-    /// Alternative calculation based on simple IOPS timing (1000ms / iops)
-    /// This gives a more dramatic difference between slow and fast disks
-    pub fn calculate_playback_rate_timing(iops: u32) -> f32 {
-        if iops == 0 {
-            return MIN_PLAYBACK_RATE;
-        }
 
-        // Higher IOPS = lower delay = faster playback
-        // Base timing: 1000ms / iops, then normalize
-        let timing = 1000.0 / (iops as f32);
-
-        // Normalize: slower timing (higher value) = slower playback
-        // We want IOPS 1 -> slow, IOPS 8 -> fast
-        // So we invert: faster timing = higher rate
-        let normalized = 1000.0 / timing; // This equals iops
-
-        // Scale to our range
-        let rate = normalized / 4.0; // Scale factor to get reasonable rates
-
-        rate.max(MIN_PLAYBACK_RATE).min(MAX_PLAYBACK_RATE)
-    }
 }
 
 /// Animation timing constants
