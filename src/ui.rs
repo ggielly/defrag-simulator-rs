@@ -1,5 +1,6 @@
 use crate::app::App;
-use crate::models::{ClusterState, DefragPhase};
+use crate::helpers;
+use crate::models::ClusterState;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     prelude::*,
@@ -195,11 +196,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         footer_layout[0],
     );
 
-    let percent = if app.stats.total_to_defrag == 0 {
-        100.0
-    } else {
-        (app.stats.clusters_defragged as f32 / app.stats.total_to_defrag as f32) * 100.0
-    };
+    let percent = helpers::progress_percent(app);
     let line2_spans = vec![
         Span::raw(format!(
             "│ Cluster {:<6}                    {:>3}% │",
@@ -231,20 +228,9 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         footer_layout[2],
     );
 
-    let elapsed = app.stats.start_time.elapsed();
-    let elapsed_str = format!(
-        "{:02}:{:02}:{:02}",
-        elapsed.as_secs() / 3600,
-        (elapsed.as_secs() % 3600) / 60,
-        elapsed.as_secs() % 60
-    );
-    let remaining_str = if let Some(remaining) = app.estimated_time_remaining() {
-        format!(
-            " ETA {:02}:{:02}:{:02}",
-            remaining.as_secs() / 3600,
-            (remaining.as_secs() % 3600) / 60,
-            remaining.as_secs() % 60
-        )
+    let elapsed_str = helpers::elapsed_str(app);
+    let remaining_str = if let Some(eta) = helpers::eta_str(app) {
+        format!(" ETA {}", eta)
     } else {
         String::new()
     };
@@ -263,17 +249,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     );
 
     let status_text = if let Some(filename) = &app.current_filename {
-        let max_len = 38;
-        let display_name = if filename.len() > max_len {
-            let mut end = max_len;
-            while end > 0 && !filename.is_char_boundary(end) {
-                end -= 1;
-            }
-            &filename[..end]
-        } else {
-            filename
-        };
-        format!("File: {}", display_name)
+        format!("File: {}", helpers::truncate_str(filename, 38))
     } else {
         "Full optimization".to_string()
     };
@@ -296,20 +272,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         footer_layout[5],
     );
 
-    let action_text = if app.paused {
-        "[ PAUSED ]"
-    } else {
-        match app.phase {
-            DefragPhase::Initializing => "Initializing...",
-            DefragPhase::Analyzing => "Analyzing disk...",
-            DefragPhase::Defragmenting => match app.animation_step % 3 {
-                0 => "Reading...",
-                1 => "Writing...",
-                _ => "Updating FAT...",
-            },
-            DefragPhase::Finished => "Complete",
-        }
-    };
+    let action_text = helpers::action_text(app);
 
     let demo_indicator = if app.demo_mode { "[DEMO] " } else { "" };
 

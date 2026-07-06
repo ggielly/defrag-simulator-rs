@@ -1,14 +1,11 @@
 //! Win98-style widgets for SDL2 rendering
 //! Provides reusable UI components matching the Windows 98 look
 
-use super::sdl_backend::colors;
+use super::sdl_backend::{colors, SdlBackend};
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
-use sdl2::render::Canvas;
-use sdl2::render::Texture;
-use sdl2::video::Window;
 
-/// A rectangular area with position and size
+/// A rectangular area with position and size.
 #[derive(Debug, Clone, Copy)]
 pub struct Area {
     pub x: i32,
@@ -19,12 +16,7 @@ pub struct Area {
 
 impl Area {
     pub fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
-        Self {
-            x,
-            y,
-            width,
-            height,
-        }
+        Self { x, y, width, height }
     }
 
     pub fn to_sdl_rect(&self) -> Rect {
@@ -48,7 +40,10 @@ impl Area {
     }
 }
 
-/// Win98 Button states
+// ---------------------------------------------------------------------------
+// Button
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ButtonState {
     Normal,
@@ -57,7 +52,6 @@ pub enum ButtonState {
     Disabled,
 }
 
-/// Win98-style Button widget
 pub struct Button {
     pub area: Area,
     pub text: String,
@@ -80,87 +74,80 @@ impl Button {
         self
     }
 
-    pub fn draw(&self, canvas: &mut Canvas<Window>, _resource_cache: &ResourceCache) {
-        // For now, use the fallback color-based approach since we don't have specific button sprites
-        self.draw_fallback(canvas);
-    }
-
-    /// Draw the button using colors (fallback)
-    fn draw_fallback(&self, canvas: &mut Canvas<Window>) {
-        let (x, y, w, h) = (self.area.x, self.area.y, self.area.width, self.area.height);
-
-        // Fill background
-        canvas.set_draw_color(colors::BUTTON_FACE);
-        let _ = canvas.fill_rect(self.area.to_sdl_rect());
-
+    pub fn draw(&self, backend: &mut SdlBackend) {
+        backend.fill_rect(
+            self.area.x,
+            self.area.y,
+            self.area.width,
+            self.area.height,
+            colors::BUTTON_FACE,
+        );
         match self.state {
-            ButtonState::Pressed => {
-                // Sunken border when pressed
-                self.draw_sunken_border(canvas);
-            }
-            ButtonState::Disabled => {
-                // Raised border but grayed out
-                self.draw_raised_border(canvas);
-            }
+            ButtonState::Pressed => draw_sunken_border_on(&self.area, backend),
+            ButtonState::Disabled => draw_raised_border_on(&self.area, backend),
             _ => {
-                // Normal raised border
-                self.draw_raised_border(canvas);
-
-                // Default button has extra black border
+                draw_raised_border_on(&self.area, backend);
                 if self.is_default {
-                    canvas.set_draw_color(colors::BLACK);
-                    let _ = canvas.draw_rect(Rect::new(x - 1, y - 1, w + 2, h + 2));
+                    backend.draw_rect(
+                        self.area.x - 1,
+                        self.area.y - 1,
+                        self.area.width + 2,
+                        self.area.height + 2,
+                        colors::BLACK,
+                    );
                 }
             }
         }
+        let color = if self.state == ButtonState::Disabled {
+            colors::BUTTON_SHADOW
+        } else {
+            colors::TEXT
+        };
+        let _ = backend.draw_text_centered(
+            &self.text,
+            self.area.x,
+            self.area.y + 4,
+            self.area.width,
+            13,
+            color,
+        );
     }
 
-    fn draw_raised_border(&self, canvas: &mut Canvas<Window>) {
-        let (x, y) = (self.area.x, self.area.y);
-        let (w, h) = (self.area.width as i32, self.area.height as i32);
-
-        // Outer highlight (top-left)
-        canvas.set_draw_color(colors::BUTTON_HIGHLIGHT);
-        let _ = canvas.draw_line((x, y), (x + w - 1, y));
-        let _ = canvas.draw_line((x, y), (x, y + h - 1));
-
-        // Outer shadow (bottom-right)
-        canvas.set_draw_color(colors::WINDOW_FRAME);
-        let _ = canvas.draw_line((x, y + h - 1), (x + w - 1, y + h - 1));
-        let _ = canvas.draw_line((x + w - 1, y), (x + w - 1, y + h - 1));
-
-        // Inner shadow
-        canvas.set_draw_color(colors::BUTTON_SHADOW);
-        let _ = canvas.draw_line((x + 1, y + h - 2), (x + w - 2, y + h - 2));
-        let _ = canvas.draw_line((x + w - 2, y + 1), (x + w - 2, y + h - 2));
+    pub fn update_hover(&mut self, mx: i32, my: i32) {
+        if self.area.contains(mx, my) {
+            if self.state != ButtonState::Pressed && self.state != ButtonState::Disabled {
+                self.state = ButtonState::Hovered;
+            }
+        } else if self.state == ButtonState::Hovered {
+            self.state = ButtonState::Normal;
+        }
     }
 
-    fn draw_sunken_border(&self, canvas: &mut Canvas<Window>) {
-        let (x, y) = (self.area.x, self.area.y);
-        let (w, h) = (self.area.width as i32, self.area.height as i32);
+    pub fn on_mouse_down(&mut self, mx: i32, my: i32) -> bool {
+        if self.area.contains(mx, my) && self.state != ButtonState::Disabled {
+            self.state = ButtonState::Pressed;
+            return true;
+        }
+        false
+    }
 
-        // Outer shadow (top-left)
-        canvas.set_draw_color(colors::BUTTON_SHADOW);
-        let _ = canvas.draw_line((x, y), (x + w - 1, y));
-        let _ = canvas.draw_line((x, y), (x, y + h - 1));
-
-        // Outer highlight (bottom-right)
-        canvas.set_draw_color(colors::BUTTON_HIGHLIGHT);
-        let _ = canvas.draw_line((x, y + h - 1), (x + w - 1, y + h - 1));
-        let _ = canvas.draw_line((x + w - 1, y), (x + w - 1, y + h - 1));
+    pub fn on_mouse_up(&mut self, mx: i32, my: i32) -> bool {
+        if self.state == ButtonState::Pressed {
+            self.state = ButtonState::Normal;
+            return self.area.contains(mx, my);
+        }
+        false
     }
 }
 
-use super::ResourceCache;
+// ---------------------------------------------------------------------------
+// Window widget
+// ---------------------------------------------------------------------------
 
-/// Win98-style Window widget
 pub struct Win98WindowWidget {
     pub area: Area,
     pub title: String,
     pub active: bool,
-    pub has_minimize: bool,
-    pub has_maximize: bool,
-    pub has_close: bool,
 }
 
 impl Win98WindowWidget {
@@ -169,18 +156,13 @@ impl Win98WindowWidget {
             area: Area::new(x, y, width, height),
             title: title.to_string(),
             active: true,
-            has_minimize: true,
-            has_maximize: true,
-            has_close: true,
         }
     }
 
-    /// Get the title bar area
     pub fn title_bar_area(&self) -> Area {
         Area::new(self.area.x + 3, self.area.y + 3, self.area.width - 6, 18)
     }
 
-    /// Get the client (content) area
     pub fn client_area(&self) -> Area {
         Area::new(
             self.area.x + 4,
@@ -190,145 +172,44 @@ impl Win98WindowWidget {
         )
     }
 
-    /// Draw the window frame and title bar
-    pub fn draw(&self, canvas: &mut Canvas<Window>, resource_cache: &ResourceCache) {
-        // Background
-        canvas.set_draw_color(colors::SURFACE);
-        let _ = canvas.fill_rect(self.area.to_sdl_rect());
-
-        // Draw window border
-        self.draw_window_border(canvas);
-
-        // Draw title bar using sprites if available
-        self.draw_title_bar_with_sprites(canvas, resource_cache);
+    pub fn close_button_area(&self) -> Area {
+        let ta = self.title_bar_area();
+        let sz = 14;
+        Area::new(ta.x + ta.width as i32 - sz - 2, ta.y + 2, sz as u32, sz as u32)
     }
 
-    /// Draw the title bar with gradient effect (simulated)
-    fn draw_title_bar_with_sprites(
-        &self,
-        canvas: &mut Canvas<Window>,
-        resource_cache: &ResourceCache,
-    ) {
-        let title_area = self.title_bar_area();
+    pub fn draw(&self, backend: &mut SdlBackend) {
+        let a = &self.area;
+        backend.fill_rect(a.x, a.y, a.width, a.height, colors::SURFACE);
+        draw_window_border_on(a, backend);
 
-        // Title bar background (gradient simulation - we'll use solid color)
-        let color = if self.active {
-            colors::DIALOG_BLUE
-        } else {
-            colors::DIALOG_GRAY
-        };
+        let ta = self.title_bar_area();
+        let color = if self.active { colors::DIALOG_BLUE } else { colors::DIALOG_GRAY };
+        backend.fill_rect(ta.x, ta.y, ta.width, ta.height, color);
+        let _ = backend.draw_text(&self.title, ta.x + 4, ta.y + 2, 14, colors::WHITE);
 
-        canvas.set_draw_color(color);
-        let _ = canvas.fill_rect(title_area.to_sdl_rect());
-
-        // Draw title text and buttons on top
-        self.draw_title_text_and_buttons(canvas, resource_cache);
-    }
-
-    /// Draw title text and buttons on top of the window
-    fn draw_title_text_and_buttons(
-        &self,
-        canvas: &mut Canvas<Window>,
-        resource_cache: &ResourceCache,
-    ) {
-        // Draw title bar buttons
-        self.draw_title_buttons(canvas, resource_cache);
-    }
-
-    fn draw_window_border(&self, canvas: &mut Canvas<Window>) {
-        let (x, y) = (self.area.x, self.area.y);
-        let (w, h) = (self.area.width as i32, self.area.height as i32);
-
-        // Outermost border
-        canvas.set_draw_color(colors::BUTTON_FACE);
-        let _ = canvas.draw_line((x, y), (x + w - 1, y));
-        let _ = canvas.draw_line((x, y), (x, y + h - 1));
-
-        canvas.set_draw_color(colors::WINDOW_FRAME);
-        let _ = canvas.draw_line((x, y + h - 1), (x + w - 1, y + h - 1));
-        let _ = canvas.draw_line((x + w - 1, y), (x + w - 1, y + h - 1));
-
-        // Inner border (highlight)
-        canvas.set_draw_color(colors::BUTTON_HIGHLIGHT);
-        let _ = canvas.draw_line((x + 1, y + 1), (x + w - 2, y + 1));
-        let _ = canvas.draw_line((x + 1, y + 1), (x + 1, y + h - 2));
-
-        canvas.set_draw_color(colors::BUTTON_SHADOW);
-        let _ = canvas.draw_line((x + 1, y + h - 2), (x + w - 2, y + h - 2));
-        let _ = canvas.draw_line((x + w - 2, y + 1), (x + w - 2, y + h - 2));
-    }
-
-    fn draw_title_buttons(&self, canvas: &mut Canvas<Window>, resource_cache: &ResourceCache) {
-        let title_area = self.title_bar_area();
-        let btn_size = 14;
-        let btn_y = title_area.y + 2;
-        let mut btn_x = title_area.x + title_area.width as i32 - btn_size - 2;
-
-        // Close button
-        if self.has_close {
-            self.draw_control_button(canvas, btn_x, btn_y, btn_size as u32, 'X', resource_cache);
-            btn_x -= btn_size + 2;
-        }
-
-        // Maximize button
-        if self.has_maximize {
-            self.draw_control_button(canvas, btn_x, btn_y, btn_size as u32, '□', resource_cache);
-            btn_x -= btn_size;
-        }
-
-        // Minimize button
-        if self.has_minimize {
-            self.draw_control_button(canvas, btn_x, btn_y, btn_size as u32, '_', resource_cache);
-        }
-    }
-
-    fn draw_control_button(
-        &self,
-        canvas: &mut Canvas<Window>,
-        x: i32,
-        y: i32,
-        size: u32,
-        icon: char,
-        resource_cache: &ResourceCache,
-    ) {
-        // For now, skip sprite rendering due to lifetime issues
-        // Fallback to simple color-based rendering
-
-        // Button background (fallback)
-        canvas.set_draw_color(colors::BUTTON_FACE);
-        let _ = canvas.fill_rect(Rect::new(x, y, size, size));
-
-        // Raised border
-        canvas.set_draw_color(colors::BUTTON_HIGHLIGHT);
-        let _ = canvas.draw_line((x, y), (x + size as i32 - 1, y));
-        let _ = canvas.draw_line((x, y), (x, y + size as i32 - 1));
-
-        canvas.set_draw_color(colors::WINDOW_FRAME);
-        let _ = canvas.draw_line(
-            (x, y + size as i32 - 1),
-            (x + size as i32 - 1, y + size as i32 - 1),
-        );
-        let _ = canvas.draw_line(
-            (x + size as i32 - 1, y),
-            (x + size as i32 - 1, y + size as i32 - 1),
-        );
-
-        canvas.set_draw_color(colors::BUTTON_SHADOW);
-        let _ = canvas.draw_line(
-            (x + 1, y + size as i32 - 2),
-            (x + size as i32 - 2, y + size as i32 - 2),
-        );
-        let _ = canvas.draw_line(
-            (x + size as i32 - 2, y + 1),
-            (x + size as i32 - 2, y + size as i32 - 2),
-        );
+        // Title bar buttons
+        let btn_size: i32 = 14;
+        let btn_y = ta.y + 2;
+        let mut bx = ta.x + ta.width as i32 - btn_size - 2;
+        draw_title_button(backend, bx, btn_y, btn_size as u32, colors::BLACK);
+        let _ = backend.draw_text_centered("X", bx, btn_y + 1, btn_size as u32, 9, colors::BLACK);
+        bx -= btn_size + 2;
+        draw_title_button(backend, bx, btn_y, btn_size as u32, colors::BLACK);
+        let _ = backend.draw_text_centered("□", bx, btn_y + 1, btn_size as u32, 9, colors::BLACK);
+        bx -= btn_size + 2;
+        draw_title_button(backend, bx, btn_y, btn_size as u32, colors::BLACK);
+        let _ = backend.draw_text_centered("_", bx, btn_y + 1, btn_size as u32, 9, colors::BLACK);
     }
 }
 
-/// Win98-style Progress Bar
+// ---------------------------------------------------------------------------
+// Progress bar
+// ---------------------------------------------------------------------------
+
 pub struct ProgressBar {
     pub area: Area,
-    pub progress: f64, // 0.0 to 1.0
+    pub progress: f64,
     pub fill_color: Color,
 }
 
@@ -345,57 +226,21 @@ impl ProgressBar {
         self.progress = progress.max(0.0).min(1.0);
     }
 
-    pub fn draw(&self, canvas: &mut Canvas<Window>, _resource_cache: &ResourceCache) {
-        // Fallback to color-based rendering
-        self.draw_fallback(canvas);
-    }
-
-    /// Attempt to draw the progress bar using sprite textures
-    fn draw_with_sprites(&self, _canvas: &mut Canvas<Window>) -> Result<(), String> {
-        // For now, use the fallback color-based approach since we don't have specific progress bar sprites
-        Err("No specific progress bar sprites available".to_string())
-    }
-
-    /// Draw the progress bar using colors (fallback)
-    fn draw_fallback(&self, canvas: &mut Canvas<Window>) {
-        // Background (white)
-        canvas.set_draw_color(colors::WHITE);
-        let _ = canvas.fill_rect(self.area.to_sdl_rect());
-
-        // Sunken border
-        self.draw_sunken_border(canvas);
-
-        // Progress fill
-        self.draw_progress_fill(canvas);
-    }
-
-    /// Draw the progress fill over the base
-    fn draw_progress_fill(&self, canvas: &mut Canvas<Window>) {
+    pub fn draw(&self, backend: &mut SdlBackend) {
+        backend.fill_rect(self.area.x, self.area.y, self.area.width, self.area.height, colors::WHITE);
+        draw_sunken_border_on(&self.area, backend);
         let inner = self.area.inner(2);
-        let fill_width = ((inner.width as f64) * self.progress) as u32;
-        if fill_width > 0 {
-            canvas.set_draw_color(self.fill_color);
-            let _ = canvas.fill_rect(Rect::new(inner.x, inner.y, fill_width, inner.height));
+        let fill_w = (inner.width as f64 * self.progress) as u32;
+        if fill_w > 0 {
+            backend.fill_rect(inner.x, inner.y, fill_w, inner.height, self.fill_color);
         }
-    }
-
-    fn draw_sunken_border(&self, canvas: &mut Canvas<Window>) {
-        let (x, y) = (self.area.x, self.area.y);
-        let (w, h) = (self.area.width as i32, self.area.height as i32);
-
-        // Outer shadow (top-left)
-        canvas.set_draw_color(colors::BUTTON_SHADOW);
-        let _ = canvas.draw_line((x, y), (x + w - 1, y));
-        let _ = canvas.draw_line((x, y), (x, y + h - 1));
-
-        // Outer highlight (bottom-right)
-        canvas.set_draw_color(colors::BUTTON_HIGHLIGHT);
-        let _ = canvas.draw_line((x, y + h - 1), (x + w - 1, y + h - 1));
-        let _ = canvas.draw_line((x + w - 1, y), (x + w - 1, y + h - 1));
     }
 }
 
-/// Win98-style Sunken Panel (for the disk grid)
+// ---------------------------------------------------------------------------
+// Sunken panel
+// ---------------------------------------------------------------------------
+
 pub struct SunkenPanel {
     pub area: Area,
     pub bg_color: Color,
@@ -413,50 +258,367 @@ impl SunkenPanel {
         self.area.inner(2)
     }
 
-    pub fn draw(&self, canvas: &mut Canvas<Window>, _resource_cache: &ResourceCache) {
-        // Background
-        canvas.set_draw_color(self.bg_color);
-        let _ = canvas.fill_rect(self.area.to_sdl_rect());
+    pub fn draw(&self, backend: &mut SdlBackend) {
+        backend.fill_rect(self.area.x, self.area.y, self.area.width, self.area.height, self.bg_color);
+        draw_sunken_border_on(&self.area, backend);
+    }
+}
 
-        // Try to draw border using sprites first
-        if self.draw_border_with_sprites(canvas).is_ok() {
-            return; // Successfully drew border with sprites
+// ---------------------------------------------------------------------------
+// Menu bar
+// ---------------------------------------------------------------------------
+
+pub struct MenuBar {
+    pub menus: Vec<MenuDef>,
+    pub open_menu: Option<usize>,
+    pub hovered_menu: Option<usize>,
+    pub selected_item: Option<usize>,
+    pub area: Area,
+}
+
+pub struct MenuDef {
+    pub label: &'static str,
+    pub items: Vec<MenuItem>,
+}
+
+pub enum MenuItem {
+    Entry(&'static str),
+    Separator,
+    EntryEnabled(&'static str, bool),
+}
+
+impl MenuBar {
+    pub fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
+        Self {
+            menus: Vec::new(),
+            open_menu: None,
+            hovered_menu: None,
+            selected_item: None,
+            area: Area::new(x, y, width, height),
         }
-
-        // Fallback to color-based rendering
-        self.draw_sunken_border_colors(canvas);
     }
 
-    /// Draw the border using sprites if available
-    fn draw_border_with_sprites(&self, _canvas: &mut Canvas<Window>) -> Result<(), String> {
-        // For now, we'll just use the color-based border as a fallback
-        // since we don't have specific sprites for sunken panel borders
-        Err("No specific border sprites available".to_string())
+    pub fn set_menus(&mut self, menus: Vec<MenuDef>) {
+        self.menus = menus;
     }
 
-    /// Draw the sunken border using colors (fallback)
-    fn draw_sunken_border_colors(&self, canvas: &mut Canvas<Window>) {
-        let (x, y) = (self.area.x, self.area.y);
-        let (w, h) = (self.area.width as i32, self.area.height as i32);
-
-        // Outer shadow (top-left)
-        canvas.set_draw_color(colors::BUTTON_SHADOW);
-        let _ = canvas.draw_line((x, y), (x + w - 1, y));
-        let _ = canvas.draw_line((x, y), (x, y + h - 1));
-
-        // Inner shadow
-        canvas.set_draw_color(colors::WINDOW_FRAME);
-        let _ = canvas.draw_line((x + 1, y + 1), (x + w - 2, y + 1));
-        let _ = canvas.draw_line((x + 1, y + 1), (x + 1, y + h - 2));
-
-        // Outer highlight (bottom-right)
-        canvas.set_draw_color(colors::BUTTON_HIGHLIGHT);
-        let _ = canvas.draw_line((x, y + h - 1), (x + w - 1, y + h - 1));
-        let _ = canvas.draw_line((x + w - 1, y), (x + w - 1, y + h - 1));
-
-        // Inner highlight
-        canvas.set_draw_color(colors::BUTTON_FACE);
-        let _ = canvas.draw_line((x + 1, y + h - 2), (x + w - 2, y + h - 2));
-        let _ = canvas.draw_line((x + w - 2, y + 1), (x + w - 2, y + h - 2));
+    pub fn draw(&self, backend: &mut SdlBackend) {
+        backend.fill_rect(self.area.x, self.area.y, self.area.width, self.area.height, colors::SURFACE);
+        let mut x = self.area.x + 2;
+        for (i, menu) in self.menus.iter().enumerate() {
+            let label_w = measure_menu_label(backend, menu.label) as u32 + 8;
+            let is_open = self.open_menu == Some(i);
+            let is_hovered = self.hovered_menu == Some(i) && !is_open;
+            if is_open || is_hovered {
+                backend.fill_rect(x, self.area.y, label_w, self.area.height, colors::BLACK);
+                let _ = backend.draw_text(menu.label, x + 4, self.area.y + 2, 12, colors::WHITE);
+            } else {
+                let _ = backend.draw_text(menu.label, x + 4, self.area.y + 2, 12, colors::TEXT);
+            }
+            x += label_w as i32 + 2;
+        }
     }
+
+    pub fn draw_open_menu(&self, backend: &mut SdlBackend) -> Option<(usize, usize)> {
+        let idx = self.open_menu?;
+        let menu = &self.menus[idx];
+        let mut x = self.area.x + 2;
+        for i in 0..idx {
+            x += measure_menu_label(backend, self.menus[i].label) as i32 + 10;
+        }
+        let mw = self.max_menu_width(backend, idx) as u32 + 16;
+        let mh = self.menu_height(backend, idx) as u32;
+        let y = self.area.y + self.area.height;
+
+        backend.fill_rect(x, y, mw, mh, colors::SURFACE);
+        draw_raised_border_on(&Area::new(x, y, mw, mh), backend);
+
+        let mut iy = y + 2;
+        for (ii, item) in menu.items.iter().enumerate() {
+            match item {
+                MenuItem::Separator => {
+                    let inner_x = x + 2;
+                    let sep_w = mw - 4;
+                    backend.fill_rect(inner_x, iy + 1, sep_w, 1, colors::BUTTON_SHADOW);
+                    iy += 5;
+                }
+                MenuItem::Entry(label) | MenuItem::EntryEnabled(label, _) => {
+                    let selected = self.selected_item == Some(ii);
+                    let inner_x = x + 2;
+                    let iw = mw - 4;
+                    if selected {
+                        backend.fill_rect(inner_x, iy, iw, 16, colors::BLACK);
+                        let _ = backend.draw_text(label, inner_x + 4, iy + 2, 12, colors::WHITE);
+                    } else {
+                        let _ = backend.draw_text(label, inner_x + 4, iy + 2, 12, colors::TEXT);
+                    }
+                    iy += 16;
+                }
+            }
+        }
+        Some((idx, menu.items.len()))
+    }
+
+    pub fn menu_item_at(&self, backend: &mut SdlBackend, mx: i32, my: i32) -> Option<(usize, usize)> {
+        let menu_idx = self.open_menu?;
+        let menu = &self.menus[menu_idx];
+        let mut x = self.area.x + 2;
+        for i in 0..menu_idx {
+            x += measure_menu_label(backend, self.menus[i].label) as i32 + 10;
+        }
+        let mw = self.max_menu_width(backend, menu_idx) as u32 + 16;
+        let y = self.area.y + self.area.height;
+        let mh = self.menu_height(backend, menu_idx) as u32;
+        if mx < x || mx > x + mw as i32 || my < y || my > y + mh as i32 {
+            return None;
+        }
+        let mut iy = y + 2;
+        for (ii, item) in menu.items.iter().enumerate() {
+            match item {
+                MenuItem::Separator => iy += 5,
+                MenuItem::Entry(_) | MenuItem::EntryEnabled(_, _) => {
+                    if my >= iy && my < iy + 16 {
+                        return Some((menu_idx, ii));
+                    }
+                    iy += 16;
+                }
+            }
+        }
+        Some((menu_idx, menu.items.len()))
+    }
+
+    pub fn menu_label_at(&self, backend: &mut SdlBackend, mx: i32, my: i32) -> Option<usize> {
+        if !self.area.contains(mx, my) && self.open_menu.is_none() {
+            return None;
+        }
+        let mut x = self.area.x + 2;
+        for (i, menu) in self.menus.iter().enumerate() {
+            let w = measure_menu_label(backend, menu.label) as i32 + 10;
+            if mx >= x && mx < x + w && my >= self.area.y && my < self.area.y + self.area.height {
+                return Some(i);
+            }
+            x += w;
+        }
+        None
+    }
+
+    fn max_menu_width(&self, backend: &mut SdlBackend, idx: usize) -> usize {
+        self.menus[idx]
+            .items
+            .iter()
+            .map(|item| match item {
+                MenuItem::Separator => 0,
+                MenuItem::Entry(l) | MenuItem::EntryEnabled(l, _) => measure_menu_label(backend, l),
+            })
+            .max()
+            .unwrap_or(60)
+    }
+
+    fn menu_height(&self, backend: &mut SdlBackend, idx: usize) -> usize {
+        let mut h = 4;
+        for item in &self.menus[idx].items {
+            match item {
+                MenuItem::Separator => h += 5,
+                _ => h += 16,
+            }
+        }
+        h
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Status bar (bottom of window)
+// ---------------------------------------------------------------------------
+
+pub struct StatusBar {
+    pub area: Area,
+}
+
+impl StatusBar {
+    pub fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
+        Self { area: Area::new(x, y, width, height) }
+    }
+
+    pub fn draw(&self, backend: &mut SdlBackend, left: &str, center: &str, right: &str) {
+        draw_sunken_border_on(&self.area, backend);
+        let inner = self.area.inner(2);
+        let third = inner.width / 3;
+
+        let _ = backend.draw_text(left, inner.x + 2, inner.y + 2, 11, colors::TEXT);
+        let _ = backend.draw_text_centered(center, inner.x + third, inner.y + 2, third, 11, colors::TEXT);
+        let _ = backend.draw_text(right, inner.x + third * 2 + 2, inner.y + 2, third, 11, colors::TEXT);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Checkbox
+// ---------------------------------------------------------------------------
+
+pub struct Checkbox {
+    pub area: Area,
+    pub label: &'static str,
+    pub checked: bool,
+}
+
+impl Checkbox {
+    pub fn new(x: i32, y: i32, label: &'static str, checked: bool) -> Self {
+        Self {
+            area: Area::new(x, y, 16, 16),
+            label,
+            checked,
+        }
+    }
+
+    pub fn draw(&self, backend: &mut SdlBackend) {
+        draw_sunken_border_on(&self.area, backend);
+        if self.checked {
+            let inner = self.area.inner(2);
+            backend.fill_rect(inner.x, inner.y, inner.width, inner.height, colors::BLACK);
+        }
+        let _ = backend.draw_text(self.label, self.area.x + 20, self.area.y + 1, 12, colors::TEXT);
+    }
+
+    pub fn contains(&self, mx: i32, my: i32) -> bool {
+        self.area.contains(mx, my)
+            || (mx >= self.area.x
+                && mx < self.area.x + self.area.width as i32 + measure_label_width(self.label) as i32
+                && my >= self.area.y
+                && my < self.area.y + self.area.height as i32)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Simple label
+// ---------------------------------------------------------------------------
+
+pub struct Label {
+    pub area: Area,
+    pub text: String,
+    pub size: u16,
+    pub color: Color,
+}
+
+impl Label {
+    pub fn new(x: i32, y: i32, text: &str) -> Self {
+        Self {
+            area: Area::new(x, y, 0, 16),
+            text: text.to_string(),
+            size: 12,
+            color: colors::TEXT,
+        }
+    }
+
+    pub fn draw(&self, backend: &mut SdlBackend) {
+        let _ = backend.draw_text(&self.text, self.area.x, self.area.y, self.size, self.color);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dialog overlay (used for settings / about)
+// ---------------------------------------------------------------------------
+
+pub struct Dialog {
+    pub area: Area,
+    pub title: String,
+    pub active: bool,
+}
+
+impl Dialog {
+    pub fn new(center_x: i32, center_y: i32, width: u32, height: u32, title: &str) -> Self {
+        Self {
+            area: Area::new(center_x - width as i32 / 2, center_y - height as i32 / 2, width, height),
+            title: title.to_string(),
+            active: true,
+        }
+    }
+
+    pub fn draw(&self, backend: &mut SdlBackend, content_fn: impl FnOnce(&mut SdlBackend, Area)) {
+        // Dimmed overlay
+        let screen = backend.get_size();
+        backend.fill_rect(0, 0, screen.0, screen.1, Color::RGBA(0, 0, 0, 80));
+
+        // Dialog box
+        backend.fill_rect(self.area.x, self.area.y, self.area.width, self.area.height, colors::SURFACE);
+        draw_raised_border_on(&self.area, backend);
+
+        // Title bar
+        let ta = Area::new(self.area.x + 3, self.area.y + 3, self.area.width - 6, 18);
+        backend.fill_rect(ta.x, ta.y, ta.width, ta.height, colors::DIALOG_BLUE);
+        let _ = backend.draw_text(&self.title, ta.x + 4, ta.y + 2, 14, colors::WHITE);
+
+        // Content
+        let client = Area::new(self.area.x + 8, self.area.y + 25, self.area.width - 16, self.area.height - 33);
+        content_fn(backend, client);
+    }
+
+    pub fn ok_button_area(&self) -> Area {
+        let bw = 80;
+        let bh = 23;
+        let bx = self.area.x + (self.area.width - bw) / 2;
+        let by = self.area.y + self.area.height - bh - 8;
+        Area::new(bx as i32, by as i32, bw, bh)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Border drawing helpers (shared by all widgets)
+// ---------------------------------------------------------------------------
+
+fn draw_raised_border_on(area: &Area, backend: &mut SdlBackend) {
+    let x = area.x;
+    let y = area.y;
+    let w = area.width as i32;
+    let h = area.height as i32;
+    backend.draw_hline(x, x + w - 1, y, colors::BUTTON_HIGHLIGHT);
+    backend.draw_vline(x, y, y + h - 1, colors::BUTTON_HIGHLIGHT);
+    backend.draw_hline(x + 1, x + w - 2, y + 1, colors::BUTTON_FACE);
+    backend.draw_vline(x + 1, y + 1, y + h - 2, colors::BUTTON_FACE);
+    backend.draw_hline(x, x + w - 1, y + h - 1, colors::WINDOW_FRAME);
+    backend.draw_vline(x + w - 1, y, y + h - 1, colors::WINDOW_FRAME);
+    backend.draw_hline(x + 1, x + w - 2, y + h - 2, colors::BUTTON_SHADOW);
+    backend.draw_vline(x + w - 2, y + 1, y + h - 2, colors::BUTTON_SHADOW);
+}
+
+fn draw_sunken_border_on(area: &Area, backend: &mut SdlBackend) {
+    let x = area.x;
+    let y = area.y;
+    let w = area.width as i32;
+    let h = area.height as i32;
+    backend.draw_hline(x, x + w - 1, y, colors::BUTTON_SHADOW);
+    backend.draw_vline(x, y, y + h - 1, colors::BUTTON_SHADOW);
+    backend.draw_hline(x + 1, x + w - 2, y + 1, colors::WINDOW_FRAME);
+    backend.draw_vline(x + 1, y + 1, y + h - 2, colors::WINDOW_FRAME);
+    backend.draw_hline(x, x + w - 1, y + h - 1, colors::BUTTON_HIGHLIGHT);
+    backend.draw_vline(x + w - 1, y, y + h - 1, colors::BUTTON_HIGHLIGHT);
+    backend.draw_hline(x + 1, x + w - 2, y + h - 2, colors::BUTTON_FACE);
+    backend.draw_vline(x + w - 2, y + 1, y + h - 2, colors::BUTTON_FACE);
+}
+
+fn draw_window_border_on(area: &Area, backend: &mut SdlBackend) {
+    let x = area.x;
+    let y = area.y;
+    let w = area.width as i32;
+    let h = area.height as i32;
+    backend.draw_hline(x, x + w - 1, y, colors::BUTTON_FACE);
+    backend.draw_vline(x, y, y + h - 1, colors::BUTTON_FACE);
+    backend.draw_hline(x, x + w - 1, y + h - 1, colors::WINDOW_FRAME);
+    backend.draw_vline(x + w - 1, y, y + h - 1, colors::WINDOW_FRAME);
+    backend.draw_hline(x + 1, x + w - 2, y + 1, colors::BUTTON_HIGHLIGHT);
+    backend.draw_vline(x + 1, y + 1, y + h - 2, colors::BUTTON_HIGHLIGHT);
+    backend.draw_hline(x + 1, x + w - 2, y + h - 2, colors::BUTTON_SHADOW);
+    backend.draw_vline(x + w - 2, y + 1, y + h - 2, colors::BUTTON_SHADOW);
+}
+
+fn draw_title_button(backend: &mut SdlBackend, x: i32, y: i32, size: u32, _color: Color) {
+    let area = Area::new(x, y, size, size);
+    backend.fill_rect(x, y, size, size, colors::BUTTON_FACE);
+    draw_raised_border_on(&area, backend);
+}
+
+fn measure_menu_label(backend: &mut SdlBackend, label: &str) -> usize {
+    backend.get_text_width(label, 12).unwrap_or(label.len() as u32 * 7) as usize
+}
+
+fn measure_label_width(label: &str) -> u32 {
+    label.len() as u32 * 7
 }
