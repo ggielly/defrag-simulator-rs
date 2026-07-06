@@ -1,12 +1,10 @@
 use clap::Parser;
 use defrag_simulator_rs::app;
+use defrag_simulator_rs::ui;
 use std::io::Result;
 
 #[cfg(feature = "graphical")]
 use defrag_simulator_rs::{constants::defrag_type::DefragStyle, graphics};
-
-#[cfg(not(feature = "graphical"))]
-use defrag_simulator_rs::ui;
 
 fn main() -> Result<()> {
     let args = app::Args::parse();

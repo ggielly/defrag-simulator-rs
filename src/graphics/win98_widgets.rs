@@ -328,7 +328,7 @@ impl MenuBar {
         }
         let mw = self.max_menu_width(backend, idx) as u32 + 16;
         let mh = self.menu_height(backend, idx) as u32;
-        let y = self.area.y + self.area.height;
+        let y = self.area.y + self.area.height as i32;
 
         backend.fill_rect(x, y, mw, mh, colors::SURFACE);
         draw_raised_border_on(&Area::new(x, y, mw, mh), backend);
@@ -367,7 +367,7 @@ impl MenuBar {
             x += measure_menu_label(backend, self.menus[i].label) as i32 + 10;
         }
         let mw = self.max_menu_width(backend, menu_idx) as u32 + 16;
-        let y = self.area.y + self.area.height;
+        let y = self.area.y + self.area.height as i32;
         let mh = self.menu_height(backend, menu_idx) as u32;
         if mx < x || mx > x + mw as i32 || my < y || my > y + mh as i32 {
             return None;
@@ -394,7 +394,7 @@ impl MenuBar {
         let mut x = self.area.x + 2;
         for (i, menu) in self.menus.iter().enumerate() {
             let w = measure_menu_label(backend, menu.label) as i32 + 10;
-            if mx >= x && mx < x + w && my >= self.area.y && my < self.area.y + self.area.height {
+            if mx >= x && mx < x + w && my >= self.area.y && my < self.area.y + self.area.height as i32 {
                 return Some(i);
             }
             x += w;
@@ -414,7 +414,7 @@ impl MenuBar {
             .unwrap_or(60)
     }
 
-    fn menu_height(&self, backend: &mut SdlBackend, idx: usize) -> usize {
+    fn menu_height(&self, _backend: &mut SdlBackend, idx: usize) -> usize {
         let mut h = 4;
         for item in &self.menus[idx].items {
             match item {
@@ -445,8 +445,8 @@ impl StatusBar {
         let third = inner.width / 3;
 
         let _ = backend.draw_text(left, inner.x + 2, inner.y + 2, 11, colors::TEXT);
-        let _ = backend.draw_text_centered(center, inner.x + third, inner.y + 2, third, 11, colors::TEXT);
-        let _ = backend.draw_text(right, inner.x + third * 2 + 2, inner.y + 2, third, 11, colors::TEXT);
+        let _ = backend.draw_text_centered(center, inner.x + third as i32, inner.y + 2, third, 11, colors::TEXT);
+        let _ = backend.draw_text(right, inner.x + third as i32 * 2 + 2, inner.y + 2, 11, colors::TEXT);
     }
 }
 
@@ -554,9 +554,9 @@ impl Dialog {
     pub fn ok_button_area(&self) -> Area {
         let bw = 80;
         let bh = 23;
-        let bx = self.area.x + (self.area.width - bw) / 2;
-        let by = self.area.y + self.area.height - bh - 8;
-        Area::new(bx as i32, by as i32, bw, bh)
+        let bx = self.area.x + (self.area.width as i32 - bw as i32) / 2;
+        let by = self.area.y + self.area.height as i32 - bh as i32 - 8;
+        Area::new(bx, by, bw, bh)
     }
 }
 

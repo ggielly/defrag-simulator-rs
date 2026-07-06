@@ -6,9 +6,8 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::{Canvas, TextureCreator};
-use sdl2::ttf::{Font, Sdl2TtfContext};
+use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{Window, WindowContext};
-use std::collections::HashMap;
 
 /// Windows 98 color palette.
 pub mod colors {
@@ -65,7 +64,6 @@ pub struct SdlBackend {
     pub event_pump: sdl2::EventPump,
     pub config: SdlConfig,
     pub running: bool,
-    fonts: HashMap<u16, Font<'static, 'static>>,
 }
 
 impl SdlBackend {
@@ -109,23 +107,17 @@ impl SdlBackend {
             event_pump,
             config,
             running: true,
-            fonts: HashMap::new(),
         })
     }
 
-    fn get_font(&mut self, size: u16) -> Result<&Font<'static, 'static>, String> {
-        if !self.fonts.contains_key(&size) {
-            let font = self
-                .ttf_context
-                .load_font_from_rwops(
-                    sdl2::rwops::RWops::from_bytes(super::fonts::FONT_DATA)
-                        .map_err(|e| format!("Failed to create RWops: {}", e))?,
-                    size,
-                )
-                .map_err(|e| format!("Failed to load font: {}", e))?;
-            self.fonts.insert(size, font);
-        }
-        Ok(self.fonts.get(&size).unwrap())
+    fn load_font(&mut self, size: u16) -> Result<sdl2::ttf::Font<'_, 'static>, String> {
+        self.ttf_context
+            .load_font_from_rwops(
+                sdl2::rwops::RWops::from_bytes(super::fonts::FONT_DATA)
+                    .map_err(|e| format!("Failed to create RWops: {}", e))?,
+                size,
+            )
+            .map_err(|e| format!("Failed to load font: {}", e))
     }
 
     // -- Drawing primitives ---------------------------------------------------
@@ -198,11 +190,12 @@ impl SdlBackend {
         if text.is_empty() {
             return Ok((0, 0));
         }
-        let font = self.get_font(size)?;
-        let surface = font
-            .render(text)
-            .blended(color)
-            .map_err(|e| format!("Failed to render text: {}", e))?;
+        let surface = {
+            let font = self.load_font(size)?;
+            font.render(text)
+                .blended(color)
+                .map_err(|e| format!("Failed to render text: {}", e))?
+        };
         let texture = self
             .texture_creator
             .create_texture_from_surface(&surface)
@@ -227,7 +220,7 @@ impl SdlBackend {
         if text.is_empty() {
             return Ok((0, 0));
         }
-        let (tw, _) = self.get_text_width(text, size)?;
+        let tw = self.get_text_width(text, size)?;
         let cx = x + ((width as i32 - tw as i32) / 2);
         self.draw_text(text, cx, y, size, color)
     }
@@ -236,10 +229,11 @@ impl SdlBackend {
         if text.is_empty() {
             return Ok(0);
         }
-        let font = self.get_font(size)?;
-        let (w, _) = font
-            .size_of(text)
-            .map_err(|e| format!("Failed to measure text: {}", e))?;
+        let (w, _) = {
+            let font = self.load_font(size)?;
+            font.size_of(text)
+                .map_err(|e| format!("Failed to measure text: {}", e))?
+        };
         Ok(w)
     }
 
@@ -350,11 +344,11 @@ impl SdlBackend {
             .map_err(|e| format!("Texture lock: {}", e))?;
         // Tile the texture across the area
         let mut x = area.x;
-        while x < area.x + area.width as i32 {
+        while x < area.x + area.width() as i32 {
             let mut y = area.y;
-            while y < area.y + area.height as i32 {
-                let tw = iw.min((area.x + area.width as i32 - x) as u32);
-                let th = ih.min((area.y + area.height as i32 - y) as u32);
+            while y < area.y + area.height() as i32 {
+                let tw = iw.min((area.x + area.width() as i32 - x) as u32);
+                let th = ih.min((area.y + area.height() as i32 - y) as u32);
                 let _ = self.canvas.copy(
                     &texture,
                     None,

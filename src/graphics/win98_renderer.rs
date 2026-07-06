@@ -3,7 +3,6 @@
 
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
-use sdl2::rect::Rect;
 use std::time::{Duration, Instant};
 
 use super::sdl_backend::{colors, SdlBackend, SdlConfig, SdlEvent};
@@ -35,9 +34,12 @@ fn cluster_color(state: &ClusterState) -> Color {
 // Settings dialog state
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct SettingsState {
     drive_index: usize,
+    #[allow(dead_code)]
     speed_index: usize,
+    #[allow(dead_code)]
     fill_value: u32,
     sound_enabled: bool,
 }
@@ -786,8 +788,8 @@ impl Win98GraphicalRenderer {
         let inner = self.status_bar.area.inner(2);
         let third = inner.width / 3;
         let _ = self.backend.draw_text(left, inner.x + 2, inner.y + 3, 11, colors::TEXT);
-        let _ = self.backend.draw_text_centered(center, inner.x + third, inner.y + 3, third, 11, colors::TEXT);
-        let _ = self.backend.draw_text(right, inner.x + third * 2 + 2, inner.y + 3, third, 11, colors::TEXT);
+        let _ = self.backend.draw_text_centered(center, inner.x + third as i32, inner.y + 3, third, 11, colors::TEXT);
+        let _ = self.backend.draw_text(right, inner.x + third as i32 * 2 + 2, inner.y + 3, 11, colors::TEXT);
     }
 }
 
