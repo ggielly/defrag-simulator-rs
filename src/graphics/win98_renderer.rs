@@ -3,6 +3,7 @@
 
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
+use sdl2::rect::Rect;
 use std::time::{Duration, Instant};
 
 use super::sdl_backend::{colors, SdlBackend, SdlConfig, SdlEvent};
@@ -68,7 +69,7 @@ fn progress_percent(app: &App) -> f32 {
 
 pub struct Win98GraphicalRenderer {
     backend: SdlBackend,
-    _resource_cache: ResourceCache,
+    resource_cache: ResourceCache,
 
     window: Win98WindowWidget,
     menu_bar: MenuBar,
@@ -179,17 +180,24 @@ impl Win98GraphicalRenderer {
         );
 
         let mut resource_cache = ResourceCache::new();
+        let _ = resource_cache.load_image_from_file("title_bar_gradient", "static/imgs/title_bar_gradient.png");
+        let _ = resource_cache.load_image_from_file("title_bar_inactive", "static/imgs/title_bar_inactive.png");
+        let _ = resource_cache.load_image_from_file("title_button_close", "static/imgs/title_button_close.png");
+        let _ = resource_cache.load_image_from_file("title_button_minimize", "static/imgs/title_button_minimize.png");
+        let _ = resource_cache.load_image_from_file("title_button_maximize", "static/imgs/title_button_maximize.png");
+        let _ = resource_cache.load_image_from_file("button_face", "static/imgs/button_face.png");
+        let _ = resource_cache.load_image_from_file("menubar_bg", "static/imgs/menubar_bg.png");
+        let _ = resource_cache.load_image_from_file("statusbar_bg", "static/imgs/statusbar_bg.png");
+        let _ = resource_cache.load_image_from_file("progress_bar_bg", "static/imgs/progress_bar_bg.png");
+        let _ = resource_cache.load_image_from_file("progress_bar_fill", "static/imgs/progress_bar_fill.png");
+        let _ = resource_cache.load_image_from_file("disk_panel_bg", "static/imgs/disk_panel_bg.png");
         let _ = resource_cache.load_image_from_file("cluster_sprites", "static/imgs/cluster_sprites.png");
-        let _ = resource_cache.load_image_from_file("border_left", "static/imgs/border_left.png");
-        let _ = resource_cache.load_image_from_file("right_scroll_bar", "static/imgs/right_scroll_bar.png");
-        let _ = resource_cache.load_image_from_file("title_left", "static/imgs/title_left.png");
-        let _ = resource_cache.load_image_from_file("title_right", "static/imgs/title_right.png");
-        let _ = resource_cache.load_image_from_file("title_bg", "static/imgs/title_bg.png");
-        let _ = resource_cache.load_image_from_file("top_right_scroll", "static/imgs/top_right_scroll.png");
+        let _ = resource_cache.load_image_from_file("dialog_shadow", "static/imgs/dialog_shadow.png");
+        let _ = resource_cache.load_image_from_file("about_bg", "static/imgs/about_bg.png");
 
         Ok(Self {
             backend,
-            _resource_cache: resource_cache,
+            resource_cache,
             window,
             menu_bar,
             status_bar,
@@ -540,26 +548,27 @@ impl Win98GraphicalRenderer {
     fn render(&mut self, app: &App) {
         self.backend.clear();
 
-        // Menu bar (drawn on top of window frame)
-        self.menu_bar.draw(&mut self.backend);
-
-        // Window
+        // Window frame and title bar with gradient sprite
         self.window.draw(&mut self.backend);
+        self.draw_title_bar_sprite();
+
+        // Menu bar with background sprite
+        self.draw_menubar_sprite();
 
         // Client area background
         let client = self.window.client_area();
         self.backend
             .fill_rect(client.x, client.y, client.width, client.height, colors::SURFACE);
 
-        // Disk panel
-        self.disk_panel.draw(&mut self.backend);
+        // Disk panel with sprite background
+        self.draw_disk_panel_sprite();
         self.draw_disk_grid(app);
 
         // Legend
         self.draw_legend();
 
-        // Progress bar
-        self.progress_bar.draw(&mut self.backend);
+        // Progress bar with sprites
+        self.draw_progress_bar_sprite();
 
         // Progress text
         self.draw_progress_text(app);
@@ -569,12 +578,11 @@ impl Win98GraphicalRenderer {
         self.start_pause_button.draw(&mut self.backend);
         self.stop_button.draw(&mut self.backend);
 
-        // Status bar
+        // Status bar with sprite
         let phase_str = helpers::phase_status(app);
         let elapsed = helpers::elapsed_str(app);
         let eta = helpers::eta_str(app).map_or(String::new(), |e| format!("ETA {}", e));
-        self.status_bar
-            .draw(&mut self.backend, phase_str, &elapsed, &eta);
+        self.draw_statusbar_sprite(phase_str, &elapsed, &eta);
 
         // Open menu dropdown
         self.menu_bar.draw_open_menu(&mut self.backend);
@@ -680,6 +688,106 @@ impl Win98GraphicalRenderer {
             let x = self.progress_bar.area.x + self.progress_bar.area.width as i32 - tw as i32;
             let _ = self.backend.draw_text(&pct_text, x, y, 13, colors::TEXT);
         }
+    }
+
+    // -- Sprite rendering helpers ---------------------------------------------
+
+    fn draw_title_bar_sprite(&mut self) {
+        let ta = self.window.title_bar_area();
+        let id = if self.window.active {
+            "title_bar_gradient"
+        } else {
+            "title_bar_inactive"
+        };
+        let _ = self.backend.draw_cached_image(
+            &self.resource_cache,
+            id,
+            Some(ta.to_sdl_rect()),
+        );
+
+        // Title text
+        let _ = self.backend.draw_text(&self.window.title, ta.x + 4, ta.y + 2, 14, colors::WHITE);
+
+        // Title bar buttons with sprites
+        let btn_size: u32 = 14;
+        let btn_y = ta.y + 2;
+        let mut bx = ta.x + ta.width as i32 - btn_size as i32 - 2;
+
+        let _ = self.backend.draw_cached_image(
+            &self.resource_cache,
+            "title_button_close",
+            Some(sdl2::rect::Rect::new(bx, btn_y, btn_size, btn_size)),
+        );
+        bx -= btn_size as i32 + 2;
+
+        let _ = self.backend.draw_cached_image(
+            &self.resource_cache,
+            "title_button_maximize",
+            Some(sdl2::rect::Rect::new(bx, btn_y, btn_size, btn_size)),
+        );
+        bx -= btn_size as i32 + 2;
+
+        let _ = self.backend.draw_cached_image(
+            &self.resource_cache,
+            "title_button_minimize",
+            Some(sdl2::rect::Rect::new(bx, btn_y, btn_size, btn_size)),
+        );
+    }
+
+    fn draw_menubar_sprite(&mut self) {
+        let client = self.window.client_area();
+        let mb_area = sdl2::rect::Rect::new(
+            client.x,
+            client.y - 1,
+            client.width,
+            20,
+        );
+        let _ = self.backend.draw_tiled_image(
+            &self.resource_cache,
+            "menubar_bg",
+            mb_area,
+        );
+        self.menu_bar.draw(&mut self.backend);
+    }
+
+    fn draw_disk_panel_sprite(&mut self) {
+        let _ = self.backend.draw_tiled_image(
+            &self.resource_cache,
+            "disk_panel_bg",
+            self.disk_panel.area.to_sdl_rect(),
+        );
+    }
+
+    fn draw_progress_bar_sprite(&mut self) {
+        // Background
+        let _ = self.backend.draw_cached_image(
+            &self.resource_cache,
+            "progress_bar_bg",
+            Some(self.progress_bar.area.to_sdl_rect()),
+        );
+        // Fill
+        let inner = self.progress_bar.area.inner(2);
+        let fill_w = ((inner.width as f64) * self.progress_bar.progress) as u32;
+        if fill_w > 0 {
+            let _ = self.backend.draw_cached_image(
+                &self.resource_cache,
+                "progress_bar_fill",
+                Some(sdl2::rect::Rect::new(inner.x, inner.y, fill_w, inner.height)),
+            );
+        }
+    }
+
+    fn draw_statusbar_sprite(&mut self, left: &str, center: &str, right: &str) {
+        let _ = self.backend.draw_tiled_image(
+            &self.resource_cache,
+            "statusbar_bg",
+            self.status_bar.area.to_sdl_rect(),
+        );
+        let inner = self.status_bar.area.inner(2);
+        let third = inner.width / 3;
+        let _ = self.backend.draw_text(left, inner.x + 2, inner.y + 3, 11, colors::TEXT);
+        let _ = self.backend.draw_text_centered(center, inner.x + third, inner.y + 3, third, 11, colors::TEXT);
+        let _ = self.backend.draw_text(right, inner.x + third * 2 + 2, inner.y + 3, third, 11, colors::TEXT);
     }
 }
 

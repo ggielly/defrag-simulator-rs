@@ -291,6 +291,82 @@ impl SdlBackend {
         self.running
     }
 
+    /// Draw a cached image at the given position, with optional source rect and dest rect.
+    pub fn draw_cached_image(
+        &mut self,
+        cache: &super::ResourceCache,
+        id: &str,
+        dst: Option<Rect>,
+    ) -> Result<(), String> {
+        let img = cache.get_image(id).map_err(|e| e.to_string())?;
+        let (w, h) = img.dimensions();
+        let mut texture = self
+            .texture_creator
+            .create_texture_target(sdl2::pixels::PixelFormatEnum::RGBA8888, w, h)
+            .map_err(|e| format!("Texture create: {}", e))?;
+        texture
+            .with_lock(None, |buffer: &mut [u8], pitch: usize| {
+                for (x, y, pixel) in img.enumerate_pixels() {
+                    let idx = y as usize * pitch + x as usize * 4;
+                    if idx + 3 < buffer.len() {
+                        buffer[idx] = pixel[0];
+                        buffer[idx + 1] = pixel[1];
+                        buffer[idx + 2] = pixel[2];
+                        buffer[idx + 3] = pixel[3];
+                    }
+                }
+            })
+            .map_err(|e| format!("Texture lock: {}", e))?;
+        self.canvas
+            .copy(&texture, None, dst)
+            .map_err(|e| format!("Canvas copy: {}", e))
+    }
+
+    /// Draw a tiled/repeated image to fill a rectangle area.
+    pub fn draw_tiled_image(
+        &mut self,
+        cache: &super::ResourceCache,
+        id: &str,
+        area: Rect,
+    ) -> Result<(), String> {
+        let img = cache.get_image(id).map_err(|e| e.to_string())?;
+        let (iw, ih) = img.dimensions();
+        let mut texture = self
+            .texture_creator
+            .create_texture_target(sdl2::pixels::PixelFormatEnum::RGBA8888, iw, ih)
+            .map_err(|e| format!("Texture create: {}", e))?;
+        texture
+            .with_lock(None, |buffer: &mut [u8], pitch: usize| {
+                for (x, y, pixel) in img.enumerate_pixels() {
+                    let idx = y as usize * pitch + x as usize * 4;
+                    if idx + 3 < buffer.len() {
+                        buffer[idx] = pixel[0];
+                        buffer[idx + 1] = pixel[1];
+                        buffer[idx + 2] = pixel[2];
+                        buffer[idx + 3] = pixel[3];
+                    }
+                }
+            })
+            .map_err(|e| format!("Texture lock: {}", e))?;
+        // Tile the texture across the area
+        let mut x = area.x;
+        while x < area.x + area.width as i32 {
+            let mut y = area.y;
+            while y < area.y + area.height as i32 {
+                let tw = iw.min((area.x + area.width as i32 - x) as u32);
+                let th = ih.min((area.y + area.height as i32 - y) as u32);
+                let _ = self.canvas.copy(
+                    &texture,
+                    None,
+                    Some(Rect::new(x, y, tw, th)),
+                );
+                y += ih as i32;
+            }
+            x += iw as i32;
+        }
+        Ok(())
+    }
+
     pub fn get_size(&self) -> (u32, u32) {
         (self.config.width, self.config.height)
     }
